@@ -59,6 +59,10 @@ from qgis.gui import QgsMessageBar
 
 from qgis.analysis import QgsZonalStatistics
 
+import sys
+print sys.path.insert(0, "/home/paolo/projects/QGIS/python/plugins")
+from processing import duplicate_in_memory
+
 import resources_rc
 
 # Import the code for the dialog
@@ -100,7 +104,7 @@ class Svir:
             layer_pr.addAttributes(attribute_list)
 
     @staticmethod
-    def create_memory_copy_of_layer(layer, new_name='', add_to_registry=False):
+    def x_duplicate_in_memory(layer, new_name='', add_to_registry=False):
         """
         TODO: TAKEN FROM INASAFE PLUGIN AND SLIGHTLY MODIFIED.
               IT WOULD BE USEFUL TO PUT IT INTO A SEPARATE MODULE,
@@ -281,7 +285,7 @@ class Svir:
 
             # TODO: Check if it's good to use the same layer to get
             #       zones and social vulnerability data
-            self.social_vulnerability_layer = self.create_memory_copy_of_layer(
+            self.social_vulnerability_layer = duplicate_in_memory(
                 self.zonal_layer, "Social vulnerability map")
 
             # TODO: standardize loss data before inserting it in the svir layer
@@ -859,7 +863,7 @@ class Svir:
         and loss data
         """
         # Create new svir layer, duplicating social vulnerability layer
-        self.svir_layer = self.create_memory_copy_of_layer(
+        self.svir_layer = duplicate_in_memory(
             self.social_vulnerability_layer, self.tr("SVIR map"))
         # Add "loss" attribute to svir_layer
         self.add_attributes_to_layer(self.svir_layer,
