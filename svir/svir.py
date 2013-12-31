@@ -52,7 +52,8 @@ from qgis.core import (QgsVectorLayer,
                        QgsFeatureRequest,
                        QgsVectorDataProvider,
                        QgsMapLayer,
-                       QGis)
+                       QGis,
+                       QgsVectorJoinInfo)
 
 from qgis.gui import QgsMessageBar
 
@@ -115,10 +116,6 @@ class Svir:
         self.svir_layer = None
         # keep a list of the menu items, in order to easily unload them later
         self.registered_actions = []
-        # Action to join SVI with loss data (both aggregated by zone)
-        self.join_svi_with_losses_action = None
-        # Action to calculate some common statistics combining SVI and loss
-        self.calculate_svir_statistics_action = None
         # Name of the attribute containing loss values (in loss_layer)
         self.loss_attr_name = None
         # Name of the (optional) attribute containing zone id (in loss_layer)
@@ -157,7 +154,7 @@ class Svir:
                            self.normalize_attribute)
         # Action for joining SVI with loss data (both aggregated by zone)
         self.add_menu_item(":/plugins/svir/start_plugin_icon.png",
-                           u"Join SVI with loss data",
+                           u"Collect SVI and loss data by zone",
                            self.join_svi_with_aggr_losses)
         # Action for calculating RISKPLUS, RISKMULT and RISK1F statistics
         self.add_menu_item(
@@ -825,6 +822,7 @@ class Svir:
         else:
             raise RuntimeError('Purged layer invalid')
 
+    # TODO: To be removed, as soon as the new joining approach works
     def populate_svir_layer_with_loss_values(self):
         """
         Copy loss values from the aggregation layer to the svir layer
@@ -832,7 +830,7 @@ class Svir:
         taken from the zonal layer.
         """
         # to show the overall progress, cycling through zones
-        tot_zones = len(list(self.aggregation_layer.getFeatures()))
+        tot_zones = len(list(self.loss_layer_to_join.getFeatures()))
         msg = tr("Populating SVIR layer with loss values...")
         progress = self.create_progress_message_bar(msg)
 
@@ -868,6 +866,30 @@ class Svir:
                             [svir_feat.id()])
         self.clear_progress_message_bar()
 
+    def create_svir_layer_new(self):
+        # Create new svir layer, duplicating social vulnerability layer
+        layer_name = tr("SVIR map")
+        self.svir_layer = ProcessLayer(
+            self.zonal_layer_to_join).duplicate_in_memory(layer_name, True)
+        # Set up parameters to join the duplicated zonal_layer with aggregated
+        # losses
+        join_info = QgsVectorJoinInfo()
+        # Join field in the target layer (aggregation_layer)
+        join_info.targetFieldName = self.zone_id_in_zones_attr_name
+        # id of the ??source?? layer
+        join_info.joinLayerId = self.loss_layer_to_join.id()
+        # Join field in the source (svir) layer
+        join_info.joinFieldName = self.zone_id_in_zones_attr_name
+        # True if the join is cached in virtual memory
+        join_info.memoryCache = True
+        self.svir_layer.addJoin(join_info)
+        # Add svir layer to registry
+        if self.svir_layer.isValid():
+            QgsMapLayerRegistry.instance().addMapLayer(self.svir_layer)
+        else:
+            raise RuntimeError('SVIR layer invalid')
+
+    # TODO: To be removed as soon as the new joining approach works
     def create_svir_layer(self):
         """
         Create a new layer joining (by zone id) social vulnerability
@@ -876,8 +898,7 @@ class Svir:
         # Create new svir layer, duplicating social vulnerability layer
         layer_name = tr("SVIR map")
         self.svir_layer = ProcessLayer(
-            self.zonal_layer).duplicate_in_memory(layer_name,
-                                                                 True)
+            self.zonal_layer_to_join).duplicate_in_memory(layer_name, True)
         # Add "loss" attribute to svir_layer
         ProcessLayer(self.svir_layer).add_attributes(
             [QgsField(AGGR_LOSS_ATTR_NAME, QVariant.Double)])
