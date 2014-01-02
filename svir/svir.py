@@ -69,15 +69,13 @@ from svirdialog import SvirDialog
 from select_layers_to_join_dialog import SelectLayersToJoinDialog
 from attribute_selection_dialog import AttributeSelectionDialog
 from normalization_dialog import NormalizationDialog
+from select_attrs_for_stats_dialog import SelectAttrsForStatsDialog
 
 from layer_editing_manager import LayerEditingManager
 from trace_time_manager import TraceTimeManager
 
 from utils import (tr,
                    DEBUG)
-
-AGGR_LOSS_ATTR_NAME = "AGGR_LOSS"
-
 
 class Svir:
 
@@ -822,51 +820,7 @@ class Svir:
         else:
             raise RuntimeError('Purged layer invalid')
 
-    # TODO: To be removed, as soon as the new joining approach works
-    def populate_svir_layer_with_loss_values(self):
-        """
-        Copy loss values from the aggregation layer to the svir layer
-        which already contains social vulnerability related attributes
-        taken from the zonal layer.
-        """
-        # to show the overall progress, cycling through zones
-        tot_zones = len(list(self.loss_layer_to_join.getFeatures()))
-        msg = tr("Populating SVIR layer with loss values...")
-        progress = self.create_progress_message_bar(msg)
-
-        with LayerEditingManager(self.svir_layer,
-                                 tr("Add loss values to svir_layer"),
-                                 DEBUG):
-
-            aggr_loss_index = self.svir_layer.fieldNameIndex(
-                AGGR_LOSS_ATTR_NAME)
-
-            # Begin populating "loss" attribute with data from the
-            # aggregation_layer selected by the user (possibly purged from
-            # zones containing no loss data
-            for current_zone, svir_feat in enumerate(
-                    self.svir_layer.getFeatures()):
-                svir_feat_id = svir_feat.id()
-                progress_percent = current_zone / float(tot_zones) * 100
-                progress.setValue(progress_percent)
-                match_found = False
-                for aggr_feat in self.loss_layer_to_join.getFeatures():
-                    if (svir_feat[self.zone_id_in_zones_attr_name] ==
-                            aggr_feat[self.zone_id_in_zones_attr_name]):
-                        self.svir_layer.changeAttributeValue(
-                            svir_feat_id, aggr_loss_index, aggr_feat['sum'])
-                        match_found = True
-                # TODO: Check if this is the desired behavior, i.e., if we
-                #       actually want to remove from svir_layer the zones that
-                #       contain no loss values
-                if not match_found:
-                    caps = self.svir_layer.dataProvider().capabilities()
-                    if caps & QgsVectorDataProvider.DeleteFeatures:
-                        res = self.svir_layer.dataProvider().deleteFeatures(
-                            [svir_feat.id()])
-        self.clear_progress_message_bar()
-
-    def create_svir_layer_new(self):
+    def create_svir_layer(self):
         # Create new svir layer, duplicating social vulnerability layer
         layer_name = tr("SVIR map")
         self.svir_layer = ProcessLayer(
@@ -882,35 +836,78 @@ class Svir:
         join_info.joinFieldName = self.zone_id_in_zones_attr_name
         # True if the join is cached in virtual memory
         join_info.memoryCache = True
-        self.svir_layer.addJoin(join_info)
+        with LayerEditingManager(
+                self.svir_layer, 'Join SVI and losses', DEBUG):
+            self.svir_layer.addJoin(join_info)
         # Add svir layer to registry
         if self.svir_layer.isValid():
             QgsMapLayerRegistry.instance().addMapLayer(self.svir_layer)
         else:
             raise RuntimeError('SVIR layer invalid')
 
-    # TODO: To be removed as soon as the new joining approach works
-    def create_svir_layer(self):
-        """
-        Create a new layer joining (by zone id) social vulnerability
-        and loss data
-        """
-        # Create new svir layer, duplicating social vulnerability layer
-        layer_name = tr("SVIR map")
-        self.svir_layer = ProcessLayer(
-            self.zonal_layer_to_join).duplicate_in_memory(layer_name, True)
-        # Add "loss" attribute to svir_layer
-        ProcessLayer(self.svir_layer).add_attributes(
-            [QgsField(AGGR_LOSS_ATTR_NAME, QVariant.Double)])
-        # Populate "loss" attribute with data from aggregation_layer
-        self.populate_svir_layer_with_loss_values()
-        # Add svir layer to registry
-        if self.svir_layer.isValid():
-            QgsMapLayerRegistry.instance().addMapLayer(self.svir_layer)
-        else:
-            raise RuntimeError('SVIR layer invalid')
 
     def calculate_svir_statistics(self):
+        dlg = SelectAttrsForStatsDialog()
+        reg = QgsMapLayerRegistry.instance()
+        layer_list = list(reg.mapLayers())
+        if not layer_list:
+            msg = 'No layer available for statistical computations'
+            self.iface.messageBar().pushMessage(
+                tr("Error"),
+                tr(msg),
+                level=QgsMessageBar.CRITICAL)
+            return
+        dlg.ui.layer_cbx.addItems(layer_list)
+        if dlg.exec_():
+            layer = reg.mapLayers().values()[
+                dlg.ui.layer_cbx.currentIndex()]
+            svi_attr_name = dlg.ui.svi_attr_cbx.currentText()
+            aggr_loss_attr_name = dlg.ui.aggr_loss_attr_cbx.currentText()
+            # add attributes:
+            # RISKPLUS = TOTRISK + TOTSVI
+            # RISKMULT = TOTRISK * TOTSVI
+            # RISK1F   = TOTRISK * (1 + TOTSVI)
+            ProcessLayer(self.svir_layer).add_attributes(
+                [QgsField('RISKPLUS', QVariant.Double),
+                 QgsField('RISKMULT', QVariant.Double),
+                 QgsField('RISK1F', QVariant.Double)])
+            # for each zone, calculate the value of the output attributes
+            # to show the overall progress, cycling through zones
+            tot_zones = len(list(layer.getFeatures()))
+            msg = tr("Calculating some common SVIR indices...")
+            progress = self.create_progress_message_bar(msg)
+
+            with LayerEditingManager(layer,
+                                     tr("Calculate common SVIR statistics"),
+                                     DEBUG):
+                riskplus_idx = layer.fieldNameIndex('RISKPLUS')
+                riskmult_idx = layer.fieldNameIndex('RISKMULT')
+                risk1f_idx = layer.fieldNameIndex('RISK1F')
+
+                for current_zone, svir_feat in enumerate(
+                        layer.getFeatures()):
+                    svir_feat_id = svir_feat.id()
+                    progress_percent = current_zone / float(tot_zones) * 100
+                    progress.setValue(progress_percent)
+                    layer.changeAttributeValue(
+                        svir_feat_id,
+                        riskplus_idx,
+                        (svir_feat[aggr_loss_attr_name] +
+                         svir_feat[svi_attr_name]))
+                    layer.changeAttributeValue(
+                        svir_feat_id,
+                        riskmult_idx,
+                        (svir_feat[aggr_loss_attr_name] *
+                         svir_feat[svi_attr_name]))
+                    self.svir_layer.changeAttributeValue(
+                        svir_feat_id,
+                        risk1f_idx,
+                        (svir_feat[aggr_loss_attr_name] *
+                         (1 + svir_feat[svi_attr_name])))
+
+            self.clear_progress_message_bar()
+
+    def calculate_svir_statistics_old(self):
         """
         Calculate some common indices, combining total risk (in terms of
         losses) and social vulnerability index
