@@ -845,7 +845,6 @@ class Svir:
         else:
             raise RuntimeError('SVIR layer invalid')
 
-
     def calculate_svir_statistics(self):
         dlg = SelectAttrsForStatsDialog()
         reg = QgsMapLayerRegistry.instance()
@@ -867,7 +866,7 @@ class Svir:
             # RISKPLUS = TOTRISK + TOTSVI
             # RISKMULT = TOTRISK * TOTSVI
             # RISK1F   = TOTRISK * (1 + TOTSVI)
-            ProcessLayer(self.svir_layer).add_attributes(
+            ProcessLayer(layer).add_attributes(
                 [QgsField('RISKPLUS', QVariant.Double),
                  QgsField('RISKMULT', QVariant.Double),
                  QgsField('RISK1F', QVariant.Double)])
@@ -899,69 +898,13 @@ class Svir:
                         riskmult_idx,
                         (svir_feat[aggr_loss_attr_name] *
                          svir_feat[svi_attr_name]))
-                    self.svir_layer.changeAttributeValue(
+                    layer.changeAttributeValue(
                         svir_feat_id,
                         risk1f_idx,
                         (svir_feat[aggr_loss_attr_name] *
                          (1 + svir_feat[svi_attr_name])))
 
             self.clear_progress_message_bar()
-
-    def calculate_svir_statistics_old(self):
-        """
-        Calculate some common indices, combining total risk (in terms of
-        losses) and social vulnerability index
-        """
-        # Check if svir_layer has been created, otherwise return
-        if not self.svir_layer:
-            msg = "The layer containing SVIR data has not been created yet"
-            self.iface.messageBar().pushMessage(tr("Error"),
-                                                tr(msg),
-                                                level=QgsMessageBar.CRITICAL)
-            return
-        # add attributes:
-        # RISKPLUS = TOTRISK + TOTSVI
-        # RISKMULT = TOTRISK * TOTSVI
-        # RISK1F   = TOTRISK * (1 + TOTSVI)
-        ProcessLayer(self.svir_layer).add_attributes(
-            [QgsField('RISKPLUS', QVariant.Double),
-             QgsField('RISKMULT', QVariant.Double),
-             QgsField('RISK1F', QVariant.Double)])
-        # for each zone, calculate the value of the output attributes
-        # to show the overall progress, cycling through zones
-        tot_zones = len(list(self.svir_layer.getFeatures()))
-        msg = tr("Calculating some common SVIR indices...")
-        progress = self.create_progress_message_bar(msg)
-
-        with LayerEditingManager(self.svir_layer,
-                                 tr("Calculate common SVIR statistics"),
-                                 DEBUG):
-            riskplus_idx = self.svir_layer.fieldNameIndex('RISKPLUS')
-            riskmult_idx = self.svir_layer.fieldNameIndex('RISKMULT')
-            risk1f_idx = self.svir_layer.fieldNameIndex('RISK1F')
-
-            for current_zone, svir_feat in enumerate(
-                    self.svir_layer.getFeatures()):
-                svir_feat_id = svir_feat.id()
-                progress_percent = current_zone / float(tot_zones) * 100
-                progress.setValue(progress_percent)
-                self.svir_layer.changeAttributeValue(
-                    svir_feat_id,
-                    riskplus_idx,
-                    (svir_feat[AGGR_LOSS_ATTR_NAME] +
-                     svir_feat[self.zonal_attr_name]))
-                self.svir_layer.changeAttributeValue(
-                    svir_feat_id,
-                    riskmult_idx,
-                    (svir_feat[AGGR_LOSS_ATTR_NAME] *
-                     svir_feat[self.zonal_attr_name]))
-                self.svir_layer.changeAttributeValue(
-                    svir_feat_id,
-                    risk1f_idx,
-                    (svir_feat[AGGR_LOSS_ATTR_NAME] *
-                     (1 + svir_feat[self.zonal_attr_name])))
-
-        self.clear_progress_message_bar()
 
     def create_progress_message_bar(self, msg):
         """
