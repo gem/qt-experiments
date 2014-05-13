@@ -217,20 +217,21 @@ class Svir:
                            self.create_weight_tree,
                            enable=False,
                            add_to_layer_actions=True)
-        # Action to activate the modal dialog to choose weighting of the
-        # data from the platform
-        self.add_menu_item("weight_data",
-                           ":/plugins/svir/start_plugin_icon.png",
-                           u"&Weight data",
-                           self.weight_data,
-                           enable=False,
-                           add_to_layer_actions=True)
 
         # Action to calculate the SVI
         self.add_menu_item("calculate_svi",
                            ":/plugins/svir/start_plugin_icon.png",
                            u"&Calculate SVI",
                            self.calculate_svi,
+                           enable=False,
+                           add_to_layer_actions=True)
+
+        # Action to activate the modal dialog to choose weighting of the
+        # data from the platform
+        self.add_menu_item("weight_data",
+                           ":/plugins/svir/start_plugin_icon.png",
+                           u"&Weight data",
+                           self.weight_data,
                            enable=False,
                            add_to_layer_actions=True)
 
@@ -307,13 +308,14 @@ class Svir:
                 raise AttributeError
             proj_def = self.project_definitions[self.current_layer.id()]
             self.registered_actions["create_weight_tree"].setEnabled(True)
-            self.registered_actions["weight_data"].setEnabled(True)
             self.registered_actions["calculate_svi"].setEnabled(True)
-            try:
-                proj_def['IRI_operator']
-                self.registered_actions["upload"].setEnabled(True)
-            except KeyError:
-                self.registered_actions["upload"].setEnabled(False)
+
+            # SVI was calculated once at least
+            self.registered_actions["weight_data"].setEnabled(
+                'themes_operator' in proj_def)
+            # IRI was calculated once at least
+            self.registered_actions["upload"].setEnabled(
+                'IRI_operator' in proj_def)
 
         except KeyError:
             # self.project_definitions[self.current_layer.id()] is not defined
