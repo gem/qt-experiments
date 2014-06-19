@@ -28,6 +28,7 @@
 
 from PyQt4.QtGui import (QDialog,
                          QDialogButtonBox, QLabel, QLineEdit, QComboBox, )
+from globals import NUMERIC_FIELD_TYPES
 
 from ui.ui_create_weight_tree import Ui_CreateWeightTreeDialog
 
@@ -75,34 +76,37 @@ class CreateWeightTreeDialog(QDialog):
             themes_list.sort()
         themes_list.insert(0, '')
 
-        for i, field in enumerate(fields, start=1):
-            theme_name = ''
-            indicator_name = ''
-            if field.name() in indicators_list:
-                theme_name = indicators_list[field.name()][0]
-                indicator_name = indicators_list[field.name()][1]
+        i = 1
+        for field in fields:
+            if field.typeName() in NUMERIC_FIELD_TYPES:
+                theme_name = ''
+                indicator_name = ''
+                if field.name() in indicators_list:
+                    theme_name = indicators_list[field.name()][0]
+                    indicator_name = indicators_list[field.name()][1]
 
-            label = QLabel(field.name())
+                label = QLabel(field.name())
 
-            theme = QComboBox()
-            theme.setEditable(True)
-            theme.setDuplicatesEnabled(False)
-            theme.setInsertPolicy(QComboBox.InsertAlphabetically)
-            theme.addItems(themes_list)
-            current_index = theme.findText(theme_name)
-            current_index = current_index if current_index != -1 else 0
-            theme.setCurrentIndex(current_index)
-            theme.currentIndexChanged.connect(self.check_status)
-            theme.lineEdit().editingFinished.connect(self.update_themes)
-            self.theme_boxes.append(theme)
+                theme = QComboBox()
+                theme.setEditable(True)
+                theme.setDuplicatesEnabled(False)
+                theme.setInsertPolicy(QComboBox.InsertAlphabetically)
+                theme.addItems(themes_list)
+                current_index = theme.findText(theme_name)
+                current_index = current_index if current_index != -1 else 0
+                theme.setCurrentIndex(current_index)
+                theme.currentIndexChanged.connect(self.check_status)
+                theme.lineEdit().editingFinished.connect(self.update_themes)
+                self.theme_boxes.append(theme)
 
-            name = QLineEdit(indicator_name)
-            name.setPlaceholderText(field.name())
-            name.editingFinished.connect(self.check_status)
+                name = QLineEdit(indicator_name)
+                name.setPlaceholderText(field.name())
+                name.editingFinished.connect(self.check_status)
 
-            self.ui.grid_layout.addWidget(label, i, 0)
-            self.ui.grid_layout.addWidget(theme, i, 1)
-            self.ui.grid_layout.addWidget(name, i, 2)
+                self.ui.grid_layout.addWidget(label, i, 0)
+                self.ui.grid_layout.addWidget(theme, i, 1)
+                self.ui.grid_layout.addWidget(name, i, 2)
+                i += 1
 
         self.check_status()
 
