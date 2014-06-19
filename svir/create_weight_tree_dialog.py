@@ -97,6 +97,7 @@ class CreateWeightTreeDialog(QDialog):
             self.theme_boxes.append(theme)
 
             name = QLineEdit(indicator_name)
+            name.setPlaceholderText(field.name())
             name.editingFinished.connect(self.check_status)
 
             self.ui.grid_layout.addWidget(label, i, 0)
