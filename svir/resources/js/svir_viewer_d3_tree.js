@@ -125,7 +125,9 @@
             $('#projectDefNewNodeDialog').dialog("open");
             $('#projectDefNewNodeDialog')
                 .append('<br/><label for="field">Field: </label>')
-                .append('<select id="field">'+ fieldOptions(node) + '</select>');
+                .append('<select id="field">'+ fieldOptions(node) + '</select>')
+                .append('<br/><label for="nodeName">Name: </label>')
+                .append('<input id="newNodeName" type="text" name="newNodeName">');
             //TODO use selectmenu when the bug there is fixed9?
             //$(selector).selectmenu()
             //$(selector).prop('selectedIndex', 4)
