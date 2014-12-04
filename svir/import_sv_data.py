@@ -138,17 +138,8 @@ class SvDownloaderWorker(QObject):
         self.processed = 0
         self.percentage = 0
         self.is_aborted = False
-
-    def fake_run(self):
-
-        print self.get_data_by_variables_ids('ENVDIPINP', True)
-        # total = 2
-        # for i in range(total):
-        #     if self.is_aborted:
-        #         raise SvDownloadAborted
-        #     sleep(1)
-        #     progr = i * 100 / total
-        #     self.progress.emit(progr)
+        self.downloaded_file = None
+        self.load_geometries = True
 
     def abort(self):
         self.is_aborted = True
@@ -156,25 +147,27 @@ class SvDownloaderWorker(QObject):
     def update_status(
             self, message, title='Info', level=QgsMessageBar.INFO, duration=0):
         # self.status.emit(message, title, level, duration)
+        # TODO(MB) fix this
         self.status.emit(message)
 
     def run(self):
         try:
             #self.fake_run()
-            self._run()
-            self.update_status('Task done')
+            self.download()
             self.finished.emit(True)
+        except SvDownloadAborted:
+            self.finished.emit(False)
         except Exception:
             import traceback
             self.error.emit(traceback.format_exc())
             self.finished.emit(False)
 
-    def _run(self):
+    def download(self):
         # TODO: We should fix the workflow in case no geometries are
         # downloaded. Currently we must download them, so the checkbox
         # to let the user choose has been temporarily removed.
-        # load_geometries = self.dlg.ui.load_geometries_chk.isChecked()
-        load_geometries = True
+        # self.load_geometries = self.dlg.ui.load_geometries_chk.isChecked()
+
         msg = ("Loading socioeconomic data from the OpenQuake "
                "Platform...")
         # Retrieve the indices selected by the user
@@ -206,58 +199,23 @@ class SvDownloaderWorker(QObject):
         assign_default_weights(svi_themes)
 
         try:
-            fname = self.get_data_by_variables_ids(
-                indices_string, load_geometries)
-            print fname
-        except SvDownloadError as e:
-            self.update_status(
-                title=tr("Download Error"),
-                message=tr(str(e)),
-                level=QgsMessageBar.CRITICAL)
-            return
-        display_msg = tr(
-            "Socioeconomic data loaded in a new layer")
-        self.update_status(message=tr(display_msg))
-        QgsMessageLog.logMessage(
-            msg, 'GEM Social Vulnerability Downloader')
-        # don't remove the file, otherwise there will be concurrency
-        # problems
+            self.downloaded_file = self.get_data_by_variables_ids(
+                indices_string, self.load_geometries)
+            print 'File created at: %s' % self.downloaded_file
+            display_msg = tr("Socioeconomic data loaded in a new layer")
+            self.update_status(message=tr(display_msg))
+        except SvDownloadError:
+            raise
 
-        # TODO: Check if we actually want to avoid importing geometries
-        if load_geometries:
-            uri = ('file://%s?delimiter=,&crs=epsg:4326&skipLines=25'
-                   '&trimFields=yes&wktField=geometry' % fname)
-        else:
-            uri = ('file://%s?delimiter=,&skipLines=25'
-                   '&trimFields=yes' % fname)
-        # create vector layer from the csv file exported by the
-        # platform (it is still not editable!)
-        vlayer_csv = QgsVectorLayer(uri,
-                                    'socioeconomic_data_export',
-                                    'delimitedtext')
-        if not load_geometries:
-            if vlayer_csv.isValid():
-                QgsMapLayerRegistry.instance().addMapLayer(vlayer_csv)
-            else:
-                raise RuntimeError('Layer invalid')
-            layer = vlayer_csv
-        else:
-            # obtain a in-memory copy of the layer (editable) and
-            # add it to the registry
-            layer = ProcessLayer(vlayer_csv).duplicate_in_memory(
-                'socioeconomic_zonal_layer',
-                add_to_registry=True)
-        self.svir.iface.setActiveLayer(layer)
-        self.svir.project_definitions[layer.id()] = project_definition
-
-    def get_data_by_variables_ids(self, sv_variables_ids, load_geometries):
+    def get_data_by_variables_ids(self, sv_variables_ids):
         page = self.sv_downloader.host + PLATFORM_EXPORT_VARIABLES_DATA_BY_IDS
         params = dict(sv_variables_ids=sv_variables_ids,
-                      export_geometries=load_geometries)
+                      export_geometries=self.load_geometries)
         result = self.sv_downloader.sess.get(page, params=params, stream=True)
         if result.status_code == 200:
             content_length = int(result.headers.get('content-length'))
-            print content_length
+            # bytes to Mb
+            self.update_status('Downloading %sMb' % (content_length/1024/1024))
             # save csv on a temporary file
             fd, fname = tempfile.mkstemp(suffix='.csv')
             os.close(fd)
@@ -272,7 +230,7 @@ class SvDownloaderWorker(QObject):
             # build the string that describes data types for the csv
             types_string = '"String","String"' + ',"Real"' * sv_variables_count
             partial_data_length = 0
-            if load_geometries:
+            if self.load_geometries:
                 types_string += ',"String"'
             with open(fname_types, 'w') as csvt:
                 csvt.write(types_string)
@@ -289,6 +247,7 @@ class SvDownloaderWorker(QObject):
             raise SvDownloadError(result.content)
 
     progress = pyqtSignal(int)
+    # TODO (MB) check this
     status = pyqtSignal([str],
                         [str, str],
                         [str, str, int],
@@ -296,3 +255,12 @@ class SvDownloaderWorker(QObject):
     error = pyqtSignal(str)
     killed = pyqtSignal()
     finished = pyqtSignal(bool)
+
+    def fake_run(self):
+        total = 2
+        for i in range(total):
+            if self.is_aborted:
+                raise SvDownloadAborted
+            sleep(1)
+            progr = i * 100 / total
+            self.progress.emit(progr)

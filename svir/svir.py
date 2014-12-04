@@ -457,6 +457,8 @@ class Svir:
         self.downloader_worker.abort()
 
     def download_finished(self, succesful):
+        if succesful:
+            self.add_downloaded_layer()
         self.downloader_worker.deleteLater()
         self.downloader_thread.deleteLater()
         self.downloader_thread.quit()
@@ -467,13 +469,44 @@ class Svir:
         self.update_actions_status()
 
     def download_error(self, error):
-        print error
+        self.show_message(
+            title='Download error', message=error, level=QgsMessageBar.CRITICAL)
+        QgsMessageLog.logMessage(error, 'SVIR')
         # Update plugin toolbar buttons
         self.update_actions_status()
 
+    def add_downloaded_layer(self):
+        fname = self.downloader_worker.downloaded_file
+        load_geometries = self.downloader_worker.load_geometries
+        # TODO: Check if we actually want to avoid importing geometries
+        if load_geometries:
+            uri = ('file://%s?delimiter=,&crs=epsg:4326&skipLines=25'
+                   '&trimFields=yes&wktField=geometry' % fname)
+        else:
+            uri = ('file://%s?delimiter=,&skipLines=25'
+                   '&trimFields=yes' % fname)
+        # create vector layer from the csv file exported by the
+        # platform (it is still not editable!)
+        vlayer_csv = QgsVectorLayer(uri,
+                                    'socioeconomic_data_export',
+                                    'delimitedtext')
+        if not load_geometries:
+            if vlayer_csv.isValid():
+                QgsMapLayerRegistry.instance().addMapLayer(vlayer_csv)
+            else:
+                raise RuntimeError('Layer invalid')
+            layer = vlayer_csv
+        else:
+            # obtain a in-memory copy of the layer (editable) and
+            # add it to the registry
+            layer = ProcessLayer(vlayer_csv).duplicate_in_memory(
+                'socioeconomic_zonal_layer',
+                add_to_registry=True)
+        self.svir.iface.setActiveLayer(layer)
+        self.svir.project_definitions[layer.id()] = project_definition
+
     def show_message(
             self, message, title='Info', level=QgsMessageBar.INFO, duration=0):
-        print self.iface, message, title, level, duration
         show_message_on_bar(self.iface, message, title, level, duration)
 
     @staticmethod
