@@ -28,7 +28,7 @@
 import collections
 from time import time
 from PyQt4.QtCore import QSettings, Qt
-from PyQt4.QtGui import QApplication, QProgressBar, QToolButton
+from PyQt4.QtGui import QApplication, QProgressBar, QToolButton, QPushButton
 from qgis.core import QgsMapLayerRegistry
 from settings_dialog import SettingsDialog
 from qgis.gui import QgsMessageBar
@@ -58,27 +58,43 @@ def clear_progress_message_bar(iface, msg_bar_item=None):
             iface.messageBar().clearWidgets()
 
 
-def create_progress_message_bar(iface, msg, no_percentage=False):
+def create_progress_message_bar(
+        iface, msg, no_percentage=False, cancel_slot=None):
     """
     Use the messageBar of QGIS to display a message describing what's going
     on (typically during a time-consuming task), and a bar showing the
     progress of the process.
 
+    :param iface: qgis iface
+    :type: iface
     :param msg: Message to be displayed, describing the current task
     :type: str
+    :param no_percentage: make a progressbar with no percentage
+    :type: bool
+    :param cancel_slot: slot called on cancel button press. If None, no button
+                        is added
+    :type: callable
 
     :returns: progress object on which we can set the percentage of
     completion of the task through progress.setValue(percentage)
     :rtype: QProgressBar
     """
-    progress_message_bar = iface.messageBar().createMessage(msg)
-    progress = QProgressBar()
+    message = iface.messageBar().createMessage(msg)
+    progress_bar = QProgressBar()
+    progress_bar.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
     if no_percentage:
-        progress.setRange(0, 0)
-    progress_message_bar.layout().addWidget(progress)
-    iface.messageBar().pushWidget(progress_message_bar,
+        progress_bar.setRange(0, 0)
+    message.layout().addWidget(progress_bar)
+
+    if cancel_slot is not None:
+        cancel_button = QPushButton()
+        cancel_button.setText('Cancel')
+        cancel_button.clicked.connect(cancel_slot)
+        message.layout().addWidget(cancel_button)
+
+    iface.messageBar().pushWidget(message,
                                   iface.messageBar().INFO)
-    return progress_message_bar, progress
+    return message, progress_bar
 
 
 def assign_default_weights(svi_themes):

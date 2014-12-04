@@ -25,11 +25,24 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake.  If not, see <http://www.gnu.org/licenses/>.
 """
-import os
-import tempfile
-import StringIO
 import csv
+import copy
+import os
+import StringIO
+import tempfile
+from time import sleep
+import traceback
+
+from PyQt4.QtCore import QObject, pyqtSignal
+
+from qgis.core import (QgsVectorLayer, QgsMapLayerRegistry, QgsMessageLog)
+from qgis.gui import QgsMessageBar
+
 from third_party.requests import Session
+
+from process_layer import ProcessLayer
+from globals import PROJECT_TEMPLATE
+from utils import (tr, WaitCursorManager)
 
 # FIXME Change exposure to sv when app is ready on platform
 PLATFORM_EXPORT_SV_THEMES = "/svir/list_themes"
@@ -39,6 +52,10 @@ PLATFORM_EXPORT_VARIABLES_DATA_BY_IDS = "/svir/export_variables_data_by_ids"
 
 
 class SvDownloadError(Exception):
+    pass
+
+
+class SvDownloadAborted(Exception):
     pass
 
 
@@ -141,3 +158,133 @@ class SvDownloader(object):
                 return fname, msg
         else:
             raise SvDownloadError(result.content)
+
+
+class SvDownloaderWorker(QObject):
+    def __init__(self, svir, sv_downloader, dlg):
+        QObject.__init__(self)
+        self.svir = svir
+        self.sv_downloader = sv_downloader
+        self.dlg = dlg
+        self.processed = 0
+        self.percentage = 0
+        self.is_aborted = False
+
+    def fake_run(self):
+        total = 10
+        for i in range(total):
+            if self.is_aborted:
+                raise SvDownloadAborted
+            sleep(1)
+            progr = i * 100 / total
+            self.progress.emit(progr)
+
+    def abort(self):
+        self.is_aborted = True
+
+    def run(self):
+        try:
+            self.status.emit('Task started!')
+            self.fake_run()
+            #self._run()
+            self.status.emit('Task finished!')
+        except Exception:
+            import traceback
+            self.error.emit(traceback.format_exc())
+            self.finished.emit(False)
+        else:
+            self.finished.emit(True)
+
+    def _run(self):
+        print "Inside thread"
+        # TODO: We should fix the workflow in case no geometries are
+        # downloaded. Currently we must download them, so the checkbox
+        # to let the user choose has been temporarily removed.
+        # load_geometries = self.dlg.ui.load_geometries_chk.isChecked()
+        load_geometries = True
+        msg = ("Loading socioeconomic data from the OpenQuake "
+               "Platform...")
+        # Retrieve the indices selected by the user
+        indices_list = []
+        project_definition = copy.deepcopy(PROJECT_TEMPLATE)
+        svi_themes = project_definition[
+            'children'][1]['children']
+        known_themes = []
+        with WaitCursorManager(msg, self.svir.iface):
+            while self.dlg.ui.list_multiselect.selected_widget.count() > 0:
+                item = \
+                    self.dlg.ui.list_multiselect.selected_widget.takeItem(0)
+                ind_code = item.text().split(':')[0]
+                ind_info = self.dlg.indicators_info_dict[ind_code]
+                sv_theme = ind_info['theme']
+                sv_field = ind_code
+                sv_name = ind_info['name']
+
+                self.svir._add_new_theme(svi_themes,
+                                         known_themes,
+                                         sv_theme,
+                                         sv_name,
+                                         sv_field)
+
+                indices_list.append(sv_field)
+
+            # create string for DB query
+            indices_string = ",".join(indices_list)
+
+            self.svir.assign_default_weights(svi_themes)
+
+            try:
+                fname, msg = self.sv_downloader.get_data_by_variables_ids(
+                    indices_string, load_geometries)
+            except SvDownloadError as e:
+                self.svir.iface.messageBar().pushMessage(
+                    tr("Download Error"),
+                    tr(str(e)),
+                    level=QgsMessageBar.CRITICAL)
+                return
+        display_msg = tr(
+            "Socioeconomic data loaded in a new layer")
+        self.svir.iface.messageBar().pushMessage(tr("Info"),
+                                                 tr(display_msg),
+                                                 level=QgsMessageBar.INFO,
+                                                 duration=8)
+        QgsMessageLog.logMessage(
+            msg, 'GEM Social Vulnerability Downloader')
+        # don't remove the file, otherwise there will be concurrency
+        # problems
+
+        # TODO: Check if we actually want to avoid importing geometries
+        if load_geometries:
+            uri = ('file://%s?delimiter=,&crs=epsg:4326&skipLines=25'
+                   '&trimFields=yes&wktField=geometry' % fname)
+        else:
+            uri = ('file://%s?delimiter=,&skipLines=25'
+                   '&trimFields=yes' % fname)
+        # create vector layer from the csv file exported by the
+        # platform (it is still not editable!)
+        vlayer_csv = QgsVectorLayer(uri,
+                                    'socioeconomic_data_export',
+                                    'delimitedtext')
+        if not load_geometries:
+            if vlayer_csv.isValid():
+                QgsMapLayerRegistry.instance().addMapLayer(vlayer_csv)
+            else:
+                raise RuntimeError('Layer invalid')
+            layer = vlayer_csv
+        else:
+            # obtain a in-memory copy of the layer (editable) and
+            # add it to the registry
+            layer = ProcessLayer(vlayer_csv).duplicate_in_memory(
+                'socioeconomic_zonal_layer',
+                add_to_registry=True)
+        self.svir.iface.setActiveLayer(layer)
+        self.svir.project_definitions[layer.id()] = project_definition
+        print "Before emitting signal"
+        self.download_done.emit()
+        print "Signal emitted"
+
+    progress = pyqtSignal(int)
+    status = pyqtSignal(str)
+    error = pyqtSignal(str)
+    killed = pyqtSignal()
+    finished = pyqtSignal(bool)

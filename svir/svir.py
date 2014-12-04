@@ -38,7 +38,8 @@ from PyQt4.QtCore import (QSettings,
                           QTranslator,
                           QCoreApplication,
                           qVersion,
-                          QVariant)
+                          QVariant,
+                          QThread)
 
 from PyQt4.QtGui import (QAction,
                          QIcon,
@@ -86,8 +87,7 @@ from select_sv_variables_dialog import SelectSvVariablesDialog
 from settings_dialog import SettingsDialog
 from weight_data_dialog import WeightDataDialog
 from create_weight_tree_dialog import CreateWeightTreeDialog
-from download_thread import DownloadThread
-from import_sv_data import SvDownloader, SvDownloadError
+from import_sv_data import SvDownloader, SvDownloaderWorker, SvDownloadError
 
 from utils import (LayerEditingManager,
                    tr,
@@ -241,7 +241,8 @@ class Svir:
                            self.settings,
                            enable=True)
         self.update_actions_status()
-        self.download_thread = None
+        self.downloader_thread = None
+        self.downloader_worker = None
 
     def layers_added(self):
         self.update_actions_status()
@@ -426,16 +427,46 @@ class Svir:
         dlg = SelectSvVariablesDialog(sv_downloader)
         if dlg.exec_():
             # create a separate thread to download data from the platform
-            self.download_thread = DownloadThread(self, dlg, sv_downloader)
+            # self.downloader_thread = DownloadThread(self, dlg, sv_downloader)
             # catch the signal emitted by the thread when the download is done
-            self.download_thread.download_done.connect(self._on_download_done)
-            print "Before starting"
+            # self.downloader_thread.download_done.connect(self._on_download_done)
+            # print "Before starting"
             # run the thread
-            self.download_thread.start()
+            # self.downloader_thread.start()
 
-    def _on_download_done(self):
-        # TODO: Close the progress bar
-        pass
+            thread = self.downloader_thread = QThread()
+            thread.setTerminationEnabled(True)
+            worker = self.downloader_worker = SvDownloaderWorker(
+                self, sv_downloader, dlg)
+            worker.moveToThread(thread)
+
+            # configure the QgsMessageBar
+            message_bar, progress_bar = create_progress_message_bar(
+                self.iface, 'Downloading data', False, self.abort_download)
+            self.download_message_bar = message_bar
+            thread.started.connect(worker.run)
+            worker.progress.connect(progress_bar.setValue)
+            worker.status.connect(self.iface.mainWindow().statusBar().showMessage)
+            worker.error.connect(self._on_download_error)
+            worker.finished.connect(self._on_download_finished)
+            thread.start()
+
+    def abort_download(self):
+        print "aborting"
+        self.downloader_worker.abort()
+
+    def _on_download_finished(self, succesful):
+        self.downloader_worker.deleteLater()
+        self.downloader_thread.deleteLater()
+        self.downloader_thread.quit()
+        clear_progress_message_bar(self.iface, self.download_message_bar)
+        print "done %s" % succesful
+
+        # Update plugin toolbar buttons
+        self.update_actions_status()
+
+    def _on_download_error(self, error):
+        print error
         # Update plugin toolbar buttons
         self.update_actions_status()
 
