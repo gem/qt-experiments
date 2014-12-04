@@ -427,18 +427,37 @@ class Svir:
 
         dlg = SelectSvVariablesDialog(sv_downloader)
         if dlg.exec_():
-            # create a separate thread to download data from the platform
-            # self.downloader_thread = DownloadThread(self, dlg, sv_downloader)
-            # catch the signal emitted by the thread when the download is done
-            # self.downloader_thread.download_done.connect(self._on_download_done)
-            # print "Before starting"
-            # run the thread
-            # self.downloader_thread.start()
+            # TODO get this from the dlg
+            load_geometries = True
 
+            # Retrieve the indices selected by the user
+            indices_list = []
+            project_definition = copy.deepcopy(PROJECT_TEMPLATE)
+            svi_themes = project_definition['children'][1]['children']
+            known_themes = []
+
+            while dlg.ui.list_multiselect.selected_widget.count() > 0:
+                item = dlg.ui.list_multiselect.selected_widget.takeItem(0)
+                ind_code = item.text().split(':')[0]
+                ind_info = dlg.indicators_info_dict[ind_code]
+                sv_theme = ind_info['theme']
+                sv_field = ind_code
+                sv_name = ind_info['name']
+
+                self._add_new_theme(
+                    svi_themes, known_themes, sv_theme, sv_name, sv_field)
+
+                indices_list.append(sv_field)
+            assign_default_weights(svi_themes)
+
+            # create string for DB query
+            indicators_str = ",".join(indices_list)
+
+            # create a separate thread to download data from the platform
             thread = self.downloader_thread = QThread()
             thread.setTerminationEnabled(True)
             worker = self.downloader_worker = SvDownloaderWorker(
-                self, sv_downloader, dlg)
+                sv_downloader, indicators_str, load_geometries)
             worker.moveToThread(thread)
 
             # configure the QgsMessageBar
@@ -449,21 +468,23 @@ class Svir:
             worker.progress.connect(progress_bar.setValue)
             worker.status.connect(self.show_message)
             worker.error.connect(self.download_error)
-            worker.finished.connect(self.download_finished)
+            worker.finished.connect(lambda success:
+                                    self.download_finished(success,
+                                                           project_definition))
             thread.start()
 
     def download_abort(self):
         show_message_on_bar(self.iface, 'download aborted')
         self.downloader_worker.abort()
 
-    def download_finished(self, succesful):
-        if succesful:
-            self.add_downloaded_layer()
+    def download_finished(self, success, project_definition):
+        if success:
+            self.add_downloaded_layer(project_definition)
         self.downloader_worker.deleteLater()
         self.downloader_thread.deleteLater()
         self.downloader_thread.quit()
         clear_progress_message_bar(self.iface, self.download_message_bar)
-        print "done %s" % succesful
+        print "done %s" % success
 
         # Update plugin toolbar buttons
         self.update_actions_status()
@@ -475,7 +496,7 @@ class Svir:
         # Update plugin toolbar buttons
         self.update_actions_status()
 
-    def add_downloaded_layer(self):
+    def add_downloaded_layer(self, project_definition):
         fname = self.downloader_worker.downloaded_file
         load_geometries = self.downloader_worker.load_geometries
         # TODO: Check if we actually want to avoid importing geometries
@@ -502,8 +523,9 @@ class Svir:
             layer = ProcessLayer(vlayer_csv).duplicate_in_memory(
                 'socioeconomic_zonal_layer',
                 add_to_registry=True)
-        self.svir.iface.setActiveLayer(layer)
-        self.svir.project_definitions[layer.id()] = project_definition
+        self.iface.setActiveLayer(layer)
+        self.iface.mapCanvas().setExtent(layer.extent())
+        self.project_definitions[layer.id()] = project_definition
 
     def show_message(
             self, message, title='Info', level=QgsMessageBar.INFO, duration=0):

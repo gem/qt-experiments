@@ -130,16 +130,15 @@ class SvDownloader(object):
 
 
 class SvDownloaderWorker(QObject):
-    def __init__(self, svir, sv_downloader, dlg):
+    def __init__(self, sv_downloader, indicators_str, load_geometries):
         QObject.__init__(self)
-        self.svir = svir
         self.sv_downloader = sv_downloader
-        self.dlg = dlg
+        self.indicators_str = indicators_str
+        self.load_geometries = load_geometries
         self.processed = 0
         self.percentage = 0
         self.is_aborted = False
         self.downloaded_file = None
-        self.load_geometries = True
 
     def abort(self):
         self.is_aborted = True
@@ -168,39 +167,9 @@ class SvDownloaderWorker(QObject):
         # to let the user choose has been temporarily removed.
         # self.load_geometries = self.dlg.ui.load_geometries_chk.isChecked()
 
-        msg = ("Loading socioeconomic data from the OpenQuake "
-               "Platform...")
-        # Retrieve the indices selected by the user
-        indices_list = []
-        project_definition = copy.deepcopy(PROJECT_TEMPLATE)
-        svi_themes = project_definition[
-            'children'][1]['children']
-        known_themes = []
-        while self.dlg.ui.list_multiselect.selected_widget.count() > 0:
-            item = \
-                self.dlg.ui.list_multiselect.selected_widget.takeItem(0)
-            ind_code = item.text().split(':')[0]
-            ind_info = self.dlg.indicators_info_dict[ind_code]
-            sv_theme = ind_info['theme']
-            sv_field = ind_code
-            sv_name = ind_info['name']
-
-            self.svir._add_new_theme(svi_themes,
-                                     known_themes,
-                                     sv_theme,
-                                     sv_name,
-                                     sv_field)
-
-            indices_list.append(sv_field)
-
-        # create string for DB query
-        indices_string = ",".join(indices_list)
-
-        assign_default_weights(svi_themes)
-
         try:
             self.downloaded_file = self.get_data_by_variables_ids(
-                indices_string, self.load_geometries)
+                self.indicators_str)
             print 'File created at: %s' % self.downloaded_file
             display_msg = tr("Socioeconomic data loaded in a new layer")
             self.update_status(message=tr(display_msg))
