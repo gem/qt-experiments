@@ -153,20 +153,21 @@ class SvDownloaderWorker(QObject):
     def abort(self):
         self.is_aborted = True
 
-    def update_status(self, message):
+    def update_status(
+            self, message, title='Info', level=QgsMessageBar.INFO, duration=0):
+        # self.status.emit(message, title, level, duration)
         self.status.emit(message)
 
     def run(self):
         try:
-            self.fake_run()
-            #self._run()
+            #self.fake_run()
+            self._run()
             self.update_status('Task done')
+            self.finished.emit(True)
         except Exception:
             import traceback
             self.error.emit(traceback.format_exc())
             self.finished.emit(False)
-        else:
-            self.finished.emit(True)
 
     def _run(self):
         # TODO: We should fix the workflow in case no geometries are
@@ -205,20 +206,18 @@ class SvDownloaderWorker(QObject):
         assign_default_weights(svi_themes)
 
         try:
-            fname, msg = self.sv_downloader.get_data_by_variables_ids(
+            fname = self.get_data_by_variables_ids(
                 indices_string, load_geometries)
+            print fname
         except SvDownloadError as e:
-            self.svir.iface.messageBar().pushMessage(
-                tr("Download Error"),
-                tr(str(e)),
+            self.update_status(
+                title=tr("Download Error"),
+                message=tr(str(e)),
                 level=QgsMessageBar.CRITICAL)
             return
         display_msg = tr(
             "Socioeconomic data loaded in a new layer")
-        self.svir.iface.messageBar().pushMessage(tr("Info"),
-                                                 tr(display_msg),
-                                                 level=QgsMessageBar.INFO,
-                                                 duration=8)
+        self.update_status(message=tr(display_msg))
         QgsMessageLog.logMessage(
             msg, 'GEM Social Vulnerability Downloader')
         # don't remove the file, otherwise there will be concurrency
@@ -250,7 +249,6 @@ class SvDownloaderWorker(QObject):
                 add_to_registry=True)
         self.svir.iface.setActiveLayer(layer)
         self.svir.project_definitions[layer.id()] = project_definition
-        self.download_done.emit()
 
     def get_data_by_variables_ids(self, sv_variables_ids, load_geometries):
         page = self.sv_downloader.host + PLATFORM_EXPORT_VARIABLES_DATA_BY_IDS
@@ -279,12 +277,10 @@ class SvDownloaderWorker(QObject):
             with open(fname_types, 'w') as csvt:
                 csvt.write(types_string)
             with open(fname, 'w') as csv:
-                for partial_data in result.iter_lines():
+                for partial_data in result.iter_content(chunk_size=512):
                     partial_data_length += len(partial_data)
-                    csv.write(result.content)
+                    csv.write(partial_data)
                     perc_done = int(100 * partial_data_length / content_length)
-                    print perc_done
-                    print partial_data_length, content_length
                     self.progress.emit(perc_done)
             return fname
         else:
