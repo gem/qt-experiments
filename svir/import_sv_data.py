@@ -42,7 +42,7 @@ from third_party.requests import Session
 
 from process_layer import ProcessLayer
 from globals import PROJECT_TEMPLATE
-from utils import (tr, WaitCursorManager)
+from utils import (tr, assign_default_weights)
 
 # FIXME Change exposure to sv when app is ready on platform
 PLATFORM_EXPORT_SV_THEMES = "/svir/list_themes"
@@ -134,6 +134,7 @@ class SvDownloader(object):
                       export_geometries=load_geometries)
         result = self.sess.get(page, params=params)
         if result.status_code == 200:
+            content_length = result.headers.get('content_length')
             # save csv on a temporary file
             fd, fname = tempfile.mkstemp(suffix='.csv')
             os.close(fd)
@@ -171,7 +172,9 @@ class SvDownloaderWorker(QObject):
         self.is_aborted = False
 
     def fake_run(self):
-        total = 10
+
+        print self.sv_downloader.get_data_by_variables_ids('ENVDIPINP', True)
+        total = 2
         for i in range(total):
             if self.is_aborted:
                 raise SvDownloadAborted
@@ -182,12 +185,14 @@ class SvDownloaderWorker(QObject):
     def abort(self):
         self.is_aborted = True
 
+    def update_status(self, message):
+        self.status.emit(message)
+
     def run(self):
         try:
-            self.status.emit('Task started!')
             self.fake_run()
             #self._run()
-            self.status.emit('Task finished!')
+            self.update_status('Task done')
         except Exception:
             import traceback
             self.error.emit(traceback.format_exc())
@@ -196,7 +201,6 @@ class SvDownloaderWorker(QObject):
             self.finished.emit(True)
 
     def _run(self):
-        print "Inside thread"
         # TODO: We should fix the workflow in case no geometries are
         # downloaded. Currently we must download them, so the checkbox
         # to let the user choose has been temporarily removed.
@@ -210,38 +214,37 @@ class SvDownloaderWorker(QObject):
         svi_themes = project_definition[
             'children'][1]['children']
         known_themes = []
-        with WaitCursorManager(msg, self.svir.iface):
-            while self.dlg.ui.list_multiselect.selected_widget.count() > 0:
-                item = \
-                    self.dlg.ui.list_multiselect.selected_widget.takeItem(0)
-                ind_code = item.text().split(':')[0]
-                ind_info = self.dlg.indicators_info_dict[ind_code]
-                sv_theme = ind_info['theme']
-                sv_field = ind_code
-                sv_name = ind_info['name']
+        while self.dlg.ui.list_multiselect.selected_widget.count() > 0:
+            item = \
+                self.dlg.ui.list_multiselect.selected_widget.takeItem(0)
+            ind_code = item.text().split(':')[0]
+            ind_info = self.dlg.indicators_info_dict[ind_code]
+            sv_theme = ind_info['theme']
+            sv_field = ind_code
+            sv_name = ind_info['name']
 
-                self.svir._add_new_theme(svi_themes,
-                                         known_themes,
-                                         sv_theme,
-                                         sv_name,
-                                         sv_field)
+            self.svir._add_new_theme(svi_themes,
+                                     known_themes,
+                                     sv_theme,
+                                     sv_name,
+                                     sv_field)
 
-                indices_list.append(sv_field)
+            indices_list.append(sv_field)
 
-            # create string for DB query
-            indices_string = ",".join(indices_list)
+        # create string for DB query
+        indices_string = ",".join(indices_list)
 
-            self.svir.assign_default_weights(svi_themes)
+        assign_default_weights(svi_themes)
 
-            try:
-                fname, msg = self.sv_downloader.get_data_by_variables_ids(
-                    indices_string, load_geometries)
-            except SvDownloadError as e:
-                self.svir.iface.messageBar().pushMessage(
-                    tr("Download Error"),
-                    tr(str(e)),
-                    level=QgsMessageBar.CRITICAL)
-                return
+        try:
+            fname, msg = self.sv_downloader.get_data_by_variables_ids(
+                indices_string, load_geometries)
+        except SvDownloadError as e:
+            self.svir.iface.messageBar().pushMessage(
+                tr("Download Error"),
+                tr(str(e)),
+                level=QgsMessageBar.CRITICAL)
+            return
         display_msg = tr(
             "Socioeconomic data loaded in a new layer")
         self.svir.iface.messageBar().pushMessage(tr("Info"),
@@ -279,12 +282,13 @@ class SvDownloaderWorker(QObject):
                 add_to_registry=True)
         self.svir.iface.setActiveLayer(layer)
         self.svir.project_definitions[layer.id()] = project_definition
-        print "Before emitting signal"
         self.download_done.emit()
-        print "Signal emitted"
 
     progress = pyqtSignal(int)
-    status = pyqtSignal(str)
+    status = pyqtSignal([str],
+                        [str, str],
+                        [str, str, int],
+                        [str, str, int, int])
     error = pyqtSignal(str)
     killed = pyqtSignal()
     finished = pyqtSignal(bool)

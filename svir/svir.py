@@ -95,7 +95,8 @@ from utils import (LayerEditingManager,
                    TraceTimeManager,
                    WaitCursorManager,
                    assign_default_weights,
-                   clear_progress_message_bar, create_progress_message_bar)
+                   clear_progress_message_bar, create_progress_message_bar,
+                   show_message_on_bar)
 from globals import (INT_FIELD_TYPE_NAME,
                      DOUBLE_FIELD_TYPE_NAME,
                      NUMERIC_FIELD_TYPES,
@@ -442,20 +443,20 @@ class Svir:
 
             # configure the QgsMessageBar
             message_bar, progress_bar = create_progress_message_bar(
-                self.iface, 'Downloading data', False, self.abort_download)
+                self.iface, 'Downloading data', False, self.download_abort)
             self.download_message_bar = message_bar
             thread.started.connect(worker.run)
             worker.progress.connect(progress_bar.setValue)
-            worker.status.connect(self.iface.mainWindow().statusBar().showMessage)
-            worker.error.connect(self._on_download_error)
-            worker.finished.connect(self._on_download_finished)
+            worker.status.connect(self.show_message)
+            worker.error.connect(self.download_error)
+            worker.finished.connect(self.download_finished)
             thread.start()
 
-    def abort_download(self):
-        print "aborting"
+    def download_abort(self):
+        show_message_on_bar(self.iface, 'download aborted')
         self.downloader_worker.abort()
 
-    def _on_download_finished(self, succesful):
+    def download_finished(self, succesful):
         self.downloader_worker.deleteLater()
         self.downloader_thread.deleteLater()
         self.downloader_thread.quit()
@@ -465,10 +466,15 @@ class Svir:
         # Update plugin toolbar buttons
         self.update_actions_status()
 
-    def _on_download_error(self, error):
+    def download_error(self, error):
         print error
         # Update plugin toolbar buttons
         self.update_actions_status()
+
+    def show_message(
+            self, message, title='Info', level=QgsMessageBar.INFO, duration=0):
+        print self.iface, message, title, level, duration
+        show_message_on_bar(self.iface, message, title, level, duration)
 
     @staticmethod
     def _add_new_theme(svi_themes,

@@ -51,6 +51,11 @@ def get_credentials(iface):
     return hostname, username, password
 
 
+def show_message_on_bar(
+        iface, message, title='Info', level=QgsMessageBar.INFO, duration=0):
+            iface.messageBar().pushMessage(title, message, level, duration)
+
+
 def clear_progress_message_bar(iface, msg_bar_item=None):
         if msg_bar_item:
             iface.messageBar().popWidget(msg_bar_item)
