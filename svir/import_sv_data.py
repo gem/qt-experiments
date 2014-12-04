@@ -278,6 +278,8 @@ class SvDownloaderWorker(QObject):
                 csvt.write(types_string)
             with open(fname, 'w') as csv:
                 for partial_data in result.iter_content(chunk_size=512):
+                    if self.is_aborted:
+                        raise SvDownloadAborted
                     partial_data_length += len(partial_data)
                     csv.write(partial_data)
                     perc_done = int(100 * partial_data_length / content_length)
