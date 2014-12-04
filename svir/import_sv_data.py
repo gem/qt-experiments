@@ -128,38 +128,6 @@ class SvDownloader(object):
                 # names.append(indicators_main_info[code])
         return indicators_info
 
-    def get_data_by_variables_ids(self, sv_variables_ids, load_geometries):
-        page = self.host + PLATFORM_EXPORT_VARIABLES_DATA_BY_IDS
-        params = dict(sv_variables_ids=sv_variables_ids,
-                      export_geometries=load_geometries)
-        result = self.sess.get(page, params=params)
-        if result.status_code == 200:
-            content_length = result.headers.get('content_length')
-            # save csv on a temporary file
-            fd, fname = tempfile.mkstemp(suffix='.csv')
-            os.close(fd)
-            # All the fields of the csv file will be considered as text fields
-            # unless a .csvt file with the same name as the .csv file is used
-            # to specify the field types.
-            # For the type descriptor, use the same name as the csv file
-            fname_types = fname.split('.')[0] + '.csvt'
-            # We expect iso, country_name, v1, v2, ... vn
-            # Count variables ids
-            sv_variables_count = len(sv_variables_ids.split(','))
-            # build the string that describes data types for the csv
-            types_string = '"String","String"' + ',"Real"' * sv_variables_count
-            if load_geometries:
-                types_string += ',"String"'
-            with open(fname_types, 'w') as csvt:
-                csvt.write(types_string)
-            with open(fname, 'w') as csv:
-                csv.write(result.content)
-                msg = 'Downloaded %d lines into %s' % (
-                    result.content.count('\n'), fname)
-                return fname, msg
-        else:
-            raise SvDownloadError(result.content)
-
 
 class SvDownloaderWorker(QObject):
     def __init__(self, svir, sv_downloader, dlg):
@@ -173,14 +141,14 @@ class SvDownloaderWorker(QObject):
 
     def fake_run(self):
 
-        print self.sv_downloader.get_data_by_variables_ids('ENVDIPINP', True)
-        total = 2
-        for i in range(total):
-            if self.is_aborted:
-                raise SvDownloadAborted
-            sleep(1)
-            progr = i * 100 / total
-            self.progress.emit(progr)
+        print self.get_data_by_variables_ids('ENVDIPINP', True)
+        # total = 2
+        # for i in range(total):
+        #     if self.is_aborted:
+        #         raise SvDownloadAborted
+        #     sleep(1)
+        #     progr = i * 100 / total
+        #     self.progress.emit(progr)
 
     def abort(self):
         self.is_aborted = True
@@ -283,6 +251,44 @@ class SvDownloaderWorker(QObject):
         self.svir.iface.setActiveLayer(layer)
         self.svir.project_definitions[layer.id()] = project_definition
         self.download_done.emit()
+
+    def get_data_by_variables_ids(self, sv_variables_ids, load_geometries):
+        page = self.sv_downloader.host + PLATFORM_EXPORT_VARIABLES_DATA_BY_IDS
+        params = dict(sv_variables_ids=sv_variables_ids,
+                      export_geometries=load_geometries)
+        result = self.sv_downloader.sess.get(page, params=params, stream=True)
+        if result.status_code == 200:
+            content_length = int(result.headers.get('content-length'))
+            print content_length
+            # save csv on a temporary file
+            fd, fname = tempfile.mkstemp(suffix='.csv')
+            os.close(fd)
+            # All the fields of the csv file will be considered as text fields
+            # unless a .csvt file with the same name as the .csv file is used
+            # to specify the field types.
+            # For the type descriptor, use the same name as the csv file
+            fname_types = fname.split('.')[0] + '.csvt'
+            # We expect iso, country_name, v1, v2, ... vn
+            # Count variables ids
+            sv_variables_count = len(sv_variables_ids.split(','))
+            # build the string that describes data types for the csv
+            types_string = '"String","String"' + ',"Real"' * sv_variables_count
+            partial_data_length = 0
+            if load_geometries:
+                types_string += ',"String"'
+            with open(fname_types, 'w') as csvt:
+                csvt.write(types_string)
+            with open(fname, 'w') as csv:
+                for partial_data in result.iter_lines():
+                    partial_data_length += len(partial_data)
+                    csv.write(result.content)
+                    perc_done = int(100 * partial_data_length / content_length)
+                    print perc_done
+                    print partial_data_length, content_length
+                    self.progress.emit(perc_done)
+            return fname
+        else:
+            raise SvDownloadError(result.content)
 
     progress = pyqtSignal(int)
     status = pyqtSignal([str],
