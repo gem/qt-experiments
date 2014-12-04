@@ -528,7 +528,7 @@ class Svir:
         self.project_definitions[layer.id()] = project_definition
 
     def show_message(
-            self, message, title='Info', level=QgsMessageBar.INFO, duration=0):
+            self, message, title='Info', level=QgsMessageBar.INFO, duration=5):
         show_message_on_bar(self.iface, message, title, level, duration)
 
     @staticmethod

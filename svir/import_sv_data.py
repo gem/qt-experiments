@@ -146,7 +146,6 @@ class SvDownloaderWorker(QObject):
     def update_status(
             self, message, title='Info', level=QgsMessageBar.INFO, duration=0):
         # self.status.emit(message, title, level, duration)
-        # TODO(MB) fix this
         self.status.emit(message)
 
     def run(self):
@@ -216,11 +215,7 @@ class SvDownloaderWorker(QObject):
             raise SvDownloadError(result.content)
 
     progress = pyqtSignal(int)
-    # TODO (MB) check this
-    status = pyqtSignal([str],
-                        [str, str],
-                        [str, str, int],
-                        [str, str, int, int])
+    status = pyqtSignal(str)
     error = pyqtSignal(str)
     killed = pyqtSignal()
     finished = pyqtSignal(bool)
