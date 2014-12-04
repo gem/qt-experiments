@@ -64,7 +64,7 @@ def clear_progress_message_bar(iface, msg_bar_item=None):
 
 
 def create_progress_message_bar(
-        iface, msg, no_percentage=False, cancel_slot=None):
+        iface, msg, with_percentage=True, cancel_slot=None):
     """
     Use the messageBar of QGIS to display a message describing what's going
     on (typically during a time-consuming task), and a bar showing the
@@ -74,7 +74,7 @@ def create_progress_message_bar(
     :type: iface
     :param msg: Message to be displayed, describing the current task
     :type: str
-    :param no_percentage: make a progressbar with no percentage
+    :param with_percentage: make a progressbar with no percentage
     :type: bool
     :param cancel_slot: slot called on cancel button press. If None, no button
                         is added
@@ -87,7 +87,7 @@ def create_progress_message_bar(
     message = iface.messageBar().createMessage(msg)
     progress_bar = QProgressBar()
     progress_bar.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-    if no_percentage:
+    if not with_percentage:
         progress_bar.setRange(0, 0)
     message.layout().addWidget(progress_bar)
 
@@ -97,9 +97,17 @@ def create_progress_message_bar(
         cancel_button.clicked.connect(cancel_slot)
         message.layout().addWidget(cancel_button)
 
-    iface.messageBar().pushWidget(message,
-                                  iface.messageBar().INFO)
+    iface.messageBar().pushWidget(message, iface.messageBar().INFO)
     return message, progress_bar
+
+
+def toggle_progress_bar_with_percentage(
+        progress_bar, with_percentage, progress_range=(0, 100), value=0):
+    if with_percentage:
+        progress_bar.setRange(*progress_range)
+        progress_bar.setValue(value)
+    else:
+        progress_bar.setRange(0, 0)
 
 
 def assign_default_weights(svi_themes):

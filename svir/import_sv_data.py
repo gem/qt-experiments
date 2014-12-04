@@ -143,19 +143,15 @@ class SvDownloaderWorker(QObject):
     def abort(self):
         self.is_aborted = True
 
-    def update_status(
-            self, message, title='Info', level=QgsMessageBar.INFO, duration=0):
-        # self.status.emit(message, title, level, duration)
-        self.status.emit(message)
-
     def run(self):
         try:
-            #self.fake_run()
+            # self.fake_run()
             self.download()
             self.finished.emit(True)
         except SvDownloadAborted:
             self.finished.emit(False)
         except Exception:
+            self.abort()
             import traceback
             self.error.emit(traceback.format_exc())
             self.finished.emit(False)
@@ -171,7 +167,7 @@ class SvDownloaderWorker(QObject):
                 self.indicators_str)
             print 'File created at: %s' % self.downloaded_file
             display_msg = tr("Socioeconomic data loaded in a new layer")
-            self.update_status(message=tr(display_msg))
+            self.status.emit(display_msg)
         except SvDownloadError:
             raise
 
@@ -179,11 +175,14 @@ class SvDownloaderWorker(QObject):
         page = self.sv_downloader.host + PLATFORM_EXPORT_VARIABLES_DATA_BY_IDS
         params = dict(sv_variables_ids=sv_variables_ids,
                       export_geometries=self.load_geometries)
+        self.progressText.emit('Querying the Socioeconomic Database')
         result = self.sv_downloader.sess.get(page, params=params, stream=True)
         if result.status_code == 200:
             content_length = int(result.headers.get('content-length'))
             # bytes to Mb
-            self.update_status('Downloading %sMb' % (content_length/1024/1024))
+            self.progressTogglePercent.emit(True)
+            self.progressText.emit(
+                'Downloading %sMb' % (content_length/1024/1024))
             # save csv on a temporary file
             fd, fname = tempfile.mkstemp(suffix='.csv')
             os.close(fd)
@@ -215,6 +214,8 @@ class SvDownloaderWorker(QObject):
             raise SvDownloadError(result.content)
 
     progress = pyqtSignal(int)
+    progressText = pyqtSignal(str)
+    progressTogglePercent = pyqtSignal(bool)
     status = pyqtSignal(str)
     error = pyqtSignal(str)
     killed = pyqtSignal()

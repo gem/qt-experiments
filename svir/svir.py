@@ -96,7 +96,7 @@ from utils import (LayerEditingManager,
                    WaitCursorManager,
                    assign_default_weights,
                    clear_progress_message_bar, create_progress_message_bar,
-                   show_message_on_bar)
+                   show_message_on_bar, toggle_progress_bar_with_percentage)
 from globals import (INT_FIELD_TYPE_NAME,
                      DOUBLE_FIELD_TYPE_NAME,
                      NUMERIC_FIELD_TYPES,
@@ -464,8 +464,14 @@ class Svir:
             message_bar, progress_bar = create_progress_message_bar(
                 self.iface, 'Downloading data', False, self.download_abort)
             self.download_message_bar = message_bar
+            self.download_progress_bar = progress_bar
             thread.started.connect(worker.run)
             worker.progress.connect(progress_bar.setValue)
+            worker.progressTogglePercent.connect(
+                lambda with_percentage:
+                toggle_progress_bar_with_percentage(
+                    progress_bar, with_percentage=with_percentage))
+            worker.progressText.connect(message_bar.setText)
             worker.status.connect(self.show_message)
             worker.error.connect(self.download_error)
             worker.finished.connect(lambda success:
@@ -484,7 +490,6 @@ class Svir:
         self.downloader_thread.deleteLater()
         self.downloader_thread.quit()
         clear_progress_message_bar(self.iface, self.download_message_bar)
-        print "done %s" % success
 
         # Update plugin toolbar buttons
         self.update_actions_status()
