@@ -186,6 +186,7 @@ class SvDownloaderWorker(QObject):
                       export_geometries=self.load_geometries)
         self.progressText.emit('Querying the Socioeconomic Database')
         result = self.sv_downloader.sess.get(page, params=params, stream=True)
+        self.check_aborted()
         if result.status_code == 200:
             content_length = int(result.headers.get('content-length'))
             # bytes to Mb

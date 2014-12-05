@@ -461,7 +461,7 @@ class Svir:
                 sv_downloader, indicators_str, load_geometries)
             worker.moveToThread(thread)
 
-            # configure the QgsMessageBar
+            # Create the QgsMessageBar for downloader
             message_bar, progress_bar = create_progress_message_bar(
                 self.iface, 'Downloading data', False, self.download_abort)
             self.download_message_bar = message_bar
@@ -481,17 +481,20 @@ class Svir:
             thread.start()
 
     def download_abort(self):
-        show_message_on_bar(self.iface, 'download aborted')
+        show_message_on_bar(self.iface, 'download aborted', duration=5)
+        self.downloader_worker.progress.disconnect()
+        self.downloader_worker.progressText.disconnect()
+        self.downloader_worker.progressTogglePercent.disconnect()
         self.downloader_worker.abort()
+        clear_progress_message_bar(self.iface, self.download_message_bar)
 
     def download_finished(self, success, project_definition):
-        if success:
-            self.add_downloaded_layer(project_definition)
         self.downloader_worker.deleteLater()
         self.downloader_thread.deleteLater()
         self.downloader_thread.quit()
-        clear_progress_message_bar(self.iface, self.download_message_bar)
 
+        if success:
+            self.add_downloaded_layer(project_definition)
         # Update plugin toolbar buttons
         self.update_actions_status()
 
