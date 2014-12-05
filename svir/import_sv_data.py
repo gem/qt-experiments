@@ -41,7 +41,7 @@ from qgis.gui import QgsMessageBar
 from third_party.requests import Session
 
 from process_layer import ProcessLayer
-from globals import PROJECT_TEMPLATE
+from globals import PROJECT_TEMPLATE, DEBUG
 from utils import (tr, assign_default_weights)
 
 # FIXME Change exposure to sv when app is ready on platform
@@ -138,15 +138,33 @@ class SvDownloaderWorker(QObject):
         self.processed = 0
         self.percentage = 0
         self.is_aborted = False
-        self.downloaded_file = None
+        self.downloaded_csv = None
+        self.layer = None
 
     def abort(self):
+        """
+        Sets a flag to abort the download
+        """
         self.is_aborted = True
 
+    def check_aborted(self):
+        """
+        checks if the abort flag is set and if yes raises SvDownloadAborted
+        :raises: SvDownloadAborted
+        """
+        if self.is_aborted:
+            raise SvDownloadAborted
+
     def run(self):
+        """
+        Start the downloader and emits finished(bool) and error(str) if needed
+        """
         try:
             # self.fake_run()
-            self.download()
+            self.download_data()
+            self.check_aborted()
+            self.make_qgis_layer()
+            self.check_aborted()
             self.finished.emit(True)
         except SvDownloadAborted:
             self.finished.emit(False)
@@ -156,24 +174,15 @@ class SvDownloaderWorker(QObject):
             self.error.emit(traceback.format_exc())
             self.finished.emit(False)
 
-    def download(self):
-        # TODO: We should fix the workflow in case no geometries are
-        # downloaded. Currently we must download them, so the checkbox
-        # to let the user choose has been temporarily removed.
-        # self.load_geometries = self.dlg.ui.load_geometries_chk.isChecked()
+    def download_data(self):
+        """
+        Downloads data from the plattform creating a CSV file
+        in self.downloaded_csv
 
-        try:
-            self.downloaded_file = self.get_data_by_variables_ids(
-                self.indicators_str)
-            print 'File created at: %s' % self.downloaded_file
-            display_msg = tr("Socioeconomic data loaded in a new layer")
-            self.status.emit(display_msg)
-        except SvDownloadError:
-            raise
-
-    def get_data_by_variables_ids(self, sv_variables_ids):
+        :raises SvDownloadError
+        """
         page = self.sv_downloader.host + PLATFORM_EXPORT_VARIABLES_DATA_BY_IDS
-        params = dict(sv_variables_ids=sv_variables_ids,
+        params = dict(sv_variables_ids=self.indicators_str,
                       export_geometries=self.load_geometries)
         self.progressText.emit('Querying the Socioeconomic Database')
         result = self.sv_downloader.sess.get(page, params=params, stream=True)
@@ -193,7 +202,7 @@ class SvDownloaderWorker(QObject):
             fname_types = fname.split('.')[0] + '.csvt'
             # We expect iso, country_name, v1, v2, ... vn
             # Count variables ids
-            sv_variables_count = len(sv_variables_ids.split(','))
+            sv_variables_count = len(self.indicators_str.split(','))
             # build the string that describes data types for the csv
             types_string = '"String","String"' + ',"Real"' * sv_variables_count
             partial_data_length = 0
@@ -203,16 +212,57 @@ class SvDownloaderWorker(QObject):
                 csvt.write(types_string)
             with open(fname, 'w') as csv:
                 for partial_data in result.iter_content(chunk_size=512):
-                    if self.is_aborted:
-                        raise SvDownloadAborted
+                    self.check_aborted()
                     partial_data_length += len(partial_data)
                     csv.write(partial_data)
                     perc_done = int(100 * partial_data_length / content_length)
                     self.progress.emit(perc_done)
-            return fname
+            self.downloaded_csv = fname
         else:
             raise SvDownloadError(result.content)
 
+        # All went well
+        if DEBUG:
+            print 'File downloaded at: %s' % self.downloaded_csv
+
+    def make_qgis_layer(self):
+        """
+        Creates QgsVectorLayer from the downloaded CSV storing it in self.layer
+
+        :raises RuntimeError, TypeError
+        """
+        self.progressTogglePercent.emit(False)
+        self.progressText.emit('Creating QGIS layer')
+
+        if self.load_geometries:
+            uri = ('file://%s?delimiter=,&crs=epsg:4326&skipLines=25'
+                   '&trimFields=yes&wktField=geometry' % self.downloaded_csv)
+        else:
+            uri = ('file://%s?delimiter=,&skipLines=25'
+                   '&trimFields=yes' % self.downloaded_csv)
+
+        if DEBUG:
+            print 'Reading CSV using %s' % uri
+        # create vector layer from the csv file exported by the
+        # platform (it is still not editable!)
+        vlayer_csv = QgsVectorLayer(uri,
+                                    'socioeconomic_data_export',
+                                    'delimitedtext')
+        self.check_aborted()
+        if self.load_geometries:
+            # obtain a in-memory copy of the layer (editable) and
+            # add it to the registry
+            layer = ProcessLayer(vlayer_csv).duplicate_in_memory(
+                'socioeconomic_zonal_layer')
+        else:
+            if vlayer_csv.isValid():
+                layer = vlayer_csv
+            else:
+                raise RuntimeError('CSV Layer invalid')
+
+        self.layer = layer
+
+    # Define own signals
     progress = pyqtSignal(int)
     progressText = pyqtSignal(str)
     progressTogglePercent = pyqtSignal(bool)
@@ -221,11 +271,11 @@ class SvDownloaderWorker(QObject):
     killed = pyqtSignal()
     finished = pyqtSignal(bool)
 
+    # for debugging
     def fake_run(self):
         total = 5
         for i in range(1, total+1):
-            if self.is_aborted:
-                raise SvDownloadAborted
+            self.check_aborted()
             sleep(1)
             progr = i * 100 / total
             self.progress.emit(progr)
