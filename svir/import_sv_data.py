@@ -236,10 +236,10 @@ class SvDownloaderWorker(QObject):
         self.progressText.emit('Creating QGIS layer')
 
         if self.load_geometries:
-            uri = ('file://%s?delimiter=,&crs=epsg:4326&skipLines=25'
+            uri = ('file://%s?delimiter=,&crs=epsg:4326&skipLines=23'
                    '&trimFields=yes&wktField=geometry' % self.downloaded_csv)
         else:
-            uri = ('file://%s?delimiter=,&skipLines=25'
+            uri = ('file://%s?delimiter=,&skipLines=23'
                    '&trimFields=yes' % self.downloaded_csv)
 
         if DEBUG:
