@@ -484,10 +484,10 @@ class Svir:
 
                 # TODO: Check if we actually want to avoid importing geometries
                 if load_geometries:
-                    uri = ('file://%s?delimiter=,&crs=epsg:4326&skipLines=25'
+                    uri = ('file://%s?delimiter=,&crs=epsg:4326&skipLines=23'
                            '&trimFields=yes&wktField=geometry' % fname)
                 else:
-                    uri = ('file://%s?delimiter=,&skipLines=25'
+                    uri = ('file://%s?delimiter=,&skipLines=23'
                            '&trimFields=yes' % fname)
                 # create vector layer from the csv file exported by the
                 # platform (it is still not editable!)
