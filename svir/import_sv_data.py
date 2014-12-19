@@ -26,25 +26,20 @@
 # along with OpenQuake.  If not, see <http://www.gnu.org/licenses/>.
 """
 import csv
-import copy
 import os
 import StringIO
 import tempfile
 from time import sleep
-import traceback
 
 from PyQt4.QtCore import QObject, pyqtSignal
 
-from qgis.core import (QgsVectorLayer, QgsMapLayerRegistry, QgsMessageLog)
-from qgis.gui import QgsMessageBar
+from qgis.core import QgsVectorLayer
 
 from third_party.requests import Session
 
 from process_layer import ProcessLayer
-from globals import PROJECT_TEMPLATE, DEBUG
-from utils import (tr, assign_default_weights)
+from globals import DEBUG
 
-# FIXME Change exposure to sv when app is ready on platform
 PLATFORM_EXPORT_SV_THEMES = "/svir/list_themes"
 PLATFORM_EXPORT_SV_SUBTHEMES = "/svir/list_subthemes_by_theme"
 PLATFORM_EXPORT_SV_NAMES = "/svir/export_variables_info"
@@ -235,12 +230,27 @@ class SvDownloaderWorker(QObject):
         self.progressTogglePercent.emit(False)
         self.progressText.emit('Creating QGIS layer')
 
+        # count top lines in the csv starting with '#'
+        with open(self.downloaded_csv) as f:
+            lines_to_skip_count = 0
+            for line in f:
+                li = line.strip()
+                if li.startswith('#'):
+                    lines_to_skip_count += 1
+                else:
+                    break
+
+        if DEBUG:
+            print "%s rows will be skipped from the CSV" % lines_to_skip_count
+
         if self.load_geometries:
-            uri = ('file://%s?delimiter=,&crs=epsg:4326&skipLines=23'
-                   '&trimFields=yes&wktField=geometry' % self.downloaded_csv)
+            uri = ('file://%s?delimiter=,&crs=epsg:4326&skipLines=%s'
+                   '&trimFields=yes&wktField=geometry' % (self.downloaded_csv,
+                                                          lines_to_skip_count))
         else:
-            uri = ('file://%s?delimiter=,&skipLines=23'
-                   '&trimFields=yes' % self.downloaded_csv)
+            uri = ('file://%s?delimiter=,&skipLines=%s'
+                   '&trimFields=yes' % (self.downloaded_csv,
+                                        lines_to_skip_count))
 
         if DEBUG:
             print 'Reading CSV using %s' % uri
