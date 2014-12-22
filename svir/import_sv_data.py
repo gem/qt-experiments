@@ -72,23 +72,28 @@ class SvDownloader(object):
             raise SvDownloadError(error_message)
 
     def get_themes(self):
-        page = self.host + PLATFORM_EXPORT_SV_THEMES
-        themes = []
-        result = self.sess.get(page)
-        if result.status_code == 200:
-            reader = csv.reader(StringIO.StringIO(result.content))
-            themes = reader.next()
+        themes = self.get_items()
         return themes
 
     def get_subthemes_by_theme(self, theme):
-        page = self.host + PLATFORM_EXPORT_SV_SUBTHEMES
-        params = dict(theme=theme)
-        subthemes = []
+        subthemes = self.get_items(theme)
+        return subthemes
+
+    def get_items(self, theme=None):
+        # return the list of themes if theme is not provided,
+        # otherwise return the list of subthemes corresponding to that theme
+        params = dict()
+        items = []
+        if theme is None:
+            page = self.host + PLATFORM_EXPORT_SV_THEMES
+        else:
+            page = self.host + PLATFORM_EXPORT_SV_SUBTHEMES
+            params['theme'] = theme
         result = self.sess.get(page, params=params)
         if result.status_code == 200:
             reader = csv.reader(StringIO.StringIO(result.content))
-            subthemes = reader.next()
-        return subthemes
+            items = reader.next()
+        return items
 
     def get_indicators_info(
             self, name_filter=None, keywords=None, theme=None, subtheme=None):
