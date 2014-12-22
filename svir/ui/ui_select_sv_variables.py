@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file 'ui/ui_select_sv_variables.ui'
 #
-# Created: Fri Nov 14 14:56:10 2014
+# Created: Mon Dec 22 15:26:30 2014
 #      by: PyQt4 UI code generator 4.10.4
 #
 # WARNING! All changes made in this file will be lost!
@@ -32,21 +32,21 @@ class Ui_SelectSvVariablesDialog(object):
         self.gridLayout.setObjectName(_fromUtf8("gridLayout"))
         self.indicator_info = QtGui.QGroupBox(SelectSvVariablesDialog)
         self.indicator_info.setObjectName(_fromUtf8("indicator_info"))
-        self.gridLayout.addWidget(self.indicator_info, 4, 0, 1, 1)
+        self.gridLayout.addWidget(self.indicator_info, 5, 0, 1, 1)
         self.filters_group = QtGui.QGroupBox(SelectSvVariablesDialog)
         self.filters_group.setObjectName(_fromUtf8("filters_group"))
         self.gridLayout.addWidget(self.filters_group, 0, 0, 1, 1)
         self.filter_btn = QtGui.QPushButton(SelectSvVariablesDialog)
         self.filter_btn.setObjectName(_fromUtf8("filter_btn"))
-        self.gridLayout.addWidget(self.filter_btn, 2, 0, 1, 1)
+        self.gridLayout.addWidget(self.filter_btn, 3, 0, 1, 1)
         self.buttonBox = QtGui.QDialogButtonBox(SelectSvVariablesDialog)
         self.buttonBox.setOrientation(QtCore.Qt.Horizontal)
         self.buttonBox.setStandardButtons(QtGui.QDialogButtonBox.Cancel|QtGui.QDialogButtonBox.Ok)
         self.buttonBox.setObjectName(_fromUtf8("buttonBox"))
-        self.gridLayout.addWidget(self.buttonBox, 6, 0, 1, 1)
+        self.gridLayout.addWidget(self.buttonBox, 7, 0, 1, 1)
         self.indicator_details = QtGui.QTextBrowser(SelectSvVariablesDialog)
         self.indicator_details.setObjectName(_fromUtf8("indicator_details"))
-        self.gridLayout.addWidget(self.indicator_details, 5, 0, 1, 1)
+        self.gridLayout.addWidget(self.indicator_details, 6, 0, 1, 1)
         self.list_multiselect = ListMultiSelectWidget(SelectSvVariablesDialog)
         sizePolicy = QtGui.QSizePolicy(QtGui.QSizePolicy.Preferred, QtGui.QSizePolicy.MinimumExpanding)
         sizePolicy.setHorizontalStretch(0)
@@ -54,7 +54,7 @@ class Ui_SelectSvVariablesDialog(object):
         sizePolicy.setHeightForWidth(self.list_multiselect.sizePolicy().hasHeightForWidth())
         self.list_multiselect.setSizePolicy(sizePolicy)
         self.list_multiselect.setObjectName(_fromUtf8("list_multiselect"))
-        self.gridLayout.addWidget(self.list_multiselect, 3, 0, 1, 1)
+        self.gridLayout.addWidget(self.list_multiselect, 4, 0, 1, 1)
         self.formLayout = QtGui.QFormLayout()
         self.formLayout.setFieldGrowthPolicy(QtGui.QFormLayout.AllNonFixedFieldsGrow)
         self.formLayout.setObjectName(_fromUtf8("formLayout"))
@@ -82,7 +82,11 @@ class Ui_SelectSvVariablesDialog(object):
         self.subtheme_cbx = QtGui.QComboBox(SelectSvVariablesDialog)
         self.subtheme_cbx.setObjectName(_fromUtf8("subtheme_cbx"))
         self.formLayout.setWidget(3, QtGui.QFormLayout.FieldRole, self.subtheme_cbx)
-        self.gridLayout.addLayout(self.formLayout, 1, 0, 1, 1)
+        self.gridLayout.addLayout(self.formLayout, 2, 0, 1, 1)
+        self.label = QtGui.QLabel(SelectSvVariablesDialog)
+        self.label.setAlignment(QtCore.Qt.AlignCenter)
+        self.label.setObjectName(_fromUtf8("label"))
+        self.gridLayout.addWidget(self.label, 1, 0, 1, 1)
 
         self.retranslateUi(SelectSvVariablesDialog)
         QtCore.QObject.connect(self.buttonBox, QtCore.SIGNAL(_fromUtf8("accepted()")), SelectSvVariablesDialog.accept)
@@ -101,5 +105,6 @@ class Ui_SelectSvVariablesDialog(object):
         self.keywords_le.setPlaceholderText(_translate("SelectSvVariablesDialog", "Type one or more keywords (comma-separated)", None))
         self.theme_lbl.setText(_translate("SelectSvVariablesDialog", "Theme", None))
         self.subtheme_lbl.setText(_translate("SelectSvVariablesDialog", "Subtheme", None))
+        self.label.setText(_translate("SelectSvVariablesDialog", "All filters are optional. If no filters are specified, the whole set of indicators will be retrieved", None))
 
 from list_multiselect_widget import ListMultiSelectWidget
