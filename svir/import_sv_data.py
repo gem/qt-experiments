@@ -114,18 +114,17 @@ class SvDownloader(object):
                     header = row
                     continue
                 code = row[0]
-                indicators_info[code] = dict()
-                indicators_info[code]['name'] = row[1].decode('utf-8')
-                indicators_info[code]['theme'] = row[2].decode('utf-8')
-                indicators_info[code]['subtheme'] = row[3].decode('utf-8')
-                indicators_info[code]['description'] = row[4].decode('utf-8')
-                indicators_info[code]['measurement_type'] = \
+                info = indicators_info[code] = dict()
+                info['name'] = row[1].decode('utf-8')
+                info['theme'] = row[2].decode('utf-8')
+                info['subtheme'] = row[3].decode('utf-8')
+                info['description'] = row[4].decode('utf-8')
+                info['measurement_type'] = \
                     row[5].decode('utf-8')
-                indicators_info[code]['source'] = row[6].decode('utf-8')
-                indicators_info[code]['aggregation_method'] = \
+                info['source'] = row[6].decode('utf-8')
+                info['aggregation_method'] = \
                     row[7].decode('utf-8')
-                indicators_info[code]['keywords_str'] = row[8].decode('utf-8')
-                # names.append(indicators_main_info[code])
+                info['keywords_str'] = row[8].decode('utf-8')
         return indicators_info
 
 
