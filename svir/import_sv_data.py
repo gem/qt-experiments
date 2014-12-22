@@ -199,7 +199,7 @@ class SvDownloaderWorker(QObject):
             # unless a .csvt file with the same name as the .csv file is used
             # to specify the field types.
             # For the type descriptor, use the same name as the csv file
-            fname_types = fname.split('.')[0] + '.csvt'
+            fname_types = fname.split('.')[0] + '.csvt'  # csv types descriptor
             # We expect iso, country_name, v1, v2, ... vn
             # Count variables ids
             sv_variables_count = len(self.indicators_str.split(','))
