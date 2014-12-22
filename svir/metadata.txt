@@ -9,7 +9,7 @@
 
 
 [general]
-name=OpenQuake Social Vulnerability and Integrated Risk
+name=OpenQuake Social Vulnerability and Integrated Risk (SVIR)
 qgisMinimumVersion=2.0
 description=OpenQuake Social Vulnerability and Integrated Risk
 version=0.1
