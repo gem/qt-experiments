@@ -31,10 +31,10 @@
      </property>
     </widget>
    </item>
-   <item row="3" column="0">
+   <item row="3" column="0" alignment="Qt::AlignHCenter">
     <widget class="QPushButton" name="filter_btn">
      <property name="text">
-      <string>Filter indicators by the above criteria</string>
+      <string>Get indicators</string>
      </property>
     </widget>
    </item>

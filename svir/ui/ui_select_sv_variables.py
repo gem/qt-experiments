@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file 'ui/ui_select_sv_variables.ui'
 #
-# Created: Mon Dec 22 15:26:30 2014
+# Created: Mon Dec 22 17:12:10 2014
 #      by: PyQt4 UI code generator 4.10.4
 #
 # WARNING! All changes made in this file will be lost!
@@ -38,7 +38,7 @@ class Ui_SelectSvVariablesDialog(object):
         self.gridLayout.addWidget(self.filters_group, 0, 0, 1, 1)
         self.filter_btn = QtGui.QPushButton(SelectSvVariablesDialog)
         self.filter_btn.setObjectName(_fromUtf8("filter_btn"))
-        self.gridLayout.addWidget(self.filter_btn, 3, 0, 1, 1)
+        self.gridLayout.addWidget(self.filter_btn, 3, 0, 1, 1, QtCore.Qt.AlignHCenter)
         self.buttonBox = QtGui.QDialogButtonBox(SelectSvVariablesDialog)
         self.buttonBox.setOrientation(QtCore.Qt.Horizontal)
         self.buttonBox.setStandardButtons(QtGui.QDialogButtonBox.Cancel|QtGui.QDialogButtonBox.Ok)
