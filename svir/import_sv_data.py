@@ -29,6 +29,7 @@ import csv
 import os
 import StringIO
 import tempfile
+import traceback
 from time import sleep
 
 from PyQt4.QtCore import QObject, pyqtSignal
@@ -169,7 +170,6 @@ class SvDownloaderWorker(QObject):
             self.finished.emit(False)
         except Exception:
             self.abort()
-            import traceback
             self.error.emit(traceback.format_exc())
             self.finished.emit(False)
 
