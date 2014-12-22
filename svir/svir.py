@@ -490,8 +490,10 @@ class Svir:
 
     def download_finished(self, success, project_definition):
         self.downloader_worker.deleteLater()
-        self.downloader_thread.deleteLater()
         self.downloader_thread.quit()
+        self.downloader_thread.wait()
+        self.downloader_thread.deleteLater()
+        clear_progress_message_bar(self.iface, self.download_message_bar)
 
         if success:
             self.add_downloaded_layer(project_definition)
