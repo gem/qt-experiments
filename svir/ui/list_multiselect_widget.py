@@ -15,6 +15,9 @@ __date__ = '9/07/2013'
 
 from PyQt4 import QtGui, QtCore
 
+SMALL_QPUSH_BTN_MAX_X_SIZE = 30
+SMALL_QPUSH_BTN_MAX_Y_SIZE = 30
+
 
 class ListMultiSelectWidget(QtGui.QGroupBox):
     """Widget to show two parallel lists and move elements between the two
@@ -162,4 +165,5 @@ class SmallQPushButton(QtGui.QPushButton):
         buttons_size_policy = QtGui.QSizePolicy(
             QtGui.QSizePolicy.Fixed, QtGui.QSizePolicy.Fixed)
         self.setSizePolicy(buttons_size_policy)
-        self.setMaximumSize(QtCore.QSize(30, 30))
+        self.setMaximumSize(QtCore.QSize(SMALL_QPUSH_BTN_MAX_X_SIZE,
+                                         SMALL_QPUSH_BTN_MAX_Y_SIZE))
