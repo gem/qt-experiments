@@ -15,9 +15,6 @@ __date__ = '9/07/2013'
 
 from PyQt4 import QtGui, QtCore
 
-SMALL_QPUSH_BTN_MAX_X_SIZE = 30
-SMALL_QPUSH_BTN_MAX_Y_SIZE = 30
-
 
 class ListMultiSelectWidget(QtGui.QGroupBox):
     """Widget to show two parallel lists and move elements between the two
@@ -31,7 +28,10 @@ class ListMultiSelectWidget(QtGui.QGroupBox):
         promote it to ListMultiSelectWidget
     """
 
-    def __init__(self, parent=None, title=None):
+    def __init__(self, parent=None, title=None,
+                 qpush_btn_max_x_size=30, qpush_btn_max_y_size=30):
+        self.qpush_btn_max_x_size = qpush_btn_max_x_size
+        self.qpush_btn_max_y_size = qpush_btn_max_y_size
         QtGui.QGroupBox.__init__(self)
         self.setTitle(title)
 
@@ -128,8 +128,10 @@ class ListMultiSelectWidget(QtGui.QGroupBox):
         self.buttons_vertical_layout = QtGui.QVBoxLayout()
         self.buttons_vertical_layout.setContentsMargins(0, -1, 0, -1)
 
-        self.select_all_btn = SmallQPushButton('>>')
-        self.deselect_all_btn = SmallQPushButton('<<')
+        self.select_all_btn = SmallQPushButton(
+            '>>', self.qpush_btn_max_x_size, self.qpush_btn_max_y_size)
+        self.deselect_all_btn = SmallQPushButton(
+            '<<', self.qpush_btn_max_x_size, self.qpush_btn_max_y_size)
         self.select_btn = SmallQPushButton('>')
         self.deselect_btn = SmallQPushButton('<')
         self.select_btn.setToolTip('Add the selected items')
@@ -159,11 +161,11 @@ class ListMultiSelectWidget(QtGui.QGroupBox):
 
 
 class SmallQPushButton(QtGui.QPushButton):
-    def __init__(self, text):
+    def __init__(self, text, qpush_btn_max_x_size=30, qpush_btn_max_y_size=30):
         QtGui.QPushButton.__init__(self)
         self.setText(text)
         buttons_size_policy = QtGui.QSizePolicy(
             QtGui.QSizePolicy.Fixed, QtGui.QSizePolicy.Fixed)
         self.setSizePolicy(buttons_size_policy)
-        self.setMaximumSize(QtCore.QSize(SMALL_QPUSH_BTN_MAX_X_SIZE,
-                                         SMALL_QPUSH_BTN_MAX_Y_SIZE))
+        self.setMaximumSize(QtCore.QSize(qpush_btn_max_x_size,
+                                         qpush_btn_max_y_size))
