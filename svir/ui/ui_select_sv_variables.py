@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file 'ui/ui_select_sv_variables.ui'
 #
-# Created: Mon Dec 22 17:12:10 2014
+# Created: Mon Dec 22 17:14:20 2014
 #      by: PyQt4 UI code generator 4.10.4
 #
 # WARNING! All changes made in this file will be lost!
@@ -97,7 +97,7 @@ class Ui_SelectSvVariablesDialog(object):
         SelectSvVariablesDialog.setWindowTitle(_translate("SelectSvVariablesDialog", "Select socioeconomic indicators", None))
         self.indicator_info.setTitle(_translate("SelectSvVariablesDialog", "Indicator details", None))
         self.filters_group.setTitle(_translate("SelectSvVariablesDialog", "Filters", None))
-        self.filter_btn.setText(_translate("SelectSvVariablesDialog", "Filter indicators by the above criteria", None))
+        self.filter_btn.setText(_translate("SelectSvVariablesDialog", "Get indicators", None))
         self.list_multiselect.setTitle(_translate("SelectSvVariablesDialog", "Select indicators", None))
         self.name_filter_lbl.setText(_translate("SelectSvVariablesDialog", "Name", None))
         self.name_filter_le.setPlaceholderText(_translate("SelectSvVariablesDialog", "Type the name of an indicator, or part of it", None))
