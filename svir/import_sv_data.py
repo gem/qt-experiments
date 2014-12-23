@@ -25,17 +25,33 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake.  If not, see <http://www.gnu.org/licenses/>.
 """
+import csv
 import os
+import StringIO
 import tempfile
+import traceback
+from time import sleep
+
+from PyQt4.QtCore import QObject, pyqtSignal
+
+from qgis.core import QgsVectorLayer
+
 from third_party.requests import Session
 
-# FIXME Change exposure to sv when app is ready on platform
-PLATFORM_EXPORT_SV_CATEGORY_NAMES = "/svir/export_sv_category_names"
-PLATFORM_EXPORT_SV_DATA_BY_VARIABLES_IDS = \
-    "/svir/export_sv_data_by_variables_ids"
+from process_layer import ProcessLayer
+from globals import DEBUG
+
+PLATFORM_EXPORT_SV_THEMES = "/svir/list_themes"
+PLATFORM_EXPORT_SV_SUBTHEMES = "/svir/list_subthemes_by_theme"
+PLATFORM_EXPORT_SV_NAMES = "/svir/export_variables_info"
+PLATFORM_EXPORT_VARIABLES_DATA_BY_IDS = "/svir/export_variables_data_by_ids"
 
 
 class SvDownloadError(Exception):
+    pass
+
+
+class SvDownloadAborted(Exception):
     pass
 
 
@@ -56,21 +72,126 @@ class SvDownloader(object):
                              session_resp.content)
             raise SvDownloadError(error_message)
 
-    def get_category_names(self, theme=None, subtheme=None, tag=None):
-        page = self.host + PLATFORM_EXPORT_SV_CATEGORY_NAMES
-        params = dict(theme=theme, subtheme=subtheme, tag=tag)
-        category_names = []
-        result = self.sess.get(page, params=params)
-        if result.status_code == 200:
-            category_names = \
-                [l for l in result.content.splitlines() if l and l[0] != "#"]
-        return category_names[1:]
+    def get_themes(self):
+        themes = self.get_items()
+        return themes
 
-    def get_data_by_variables_ids(self, sv_variables_ids):
-        page = self.host + PLATFORM_EXPORT_SV_DATA_BY_VARIABLES_IDS
-        params = dict(sv_variables_ids=sv_variables_ids)
+    def get_subthemes_by_theme(self, theme):
+        subthemes = self.get_items(theme)
+        return subthemes
+
+    def get_items(self, theme=None):
+        # return the list of themes if theme is not provided,
+        # otherwise return the list of subthemes corresponding to that theme
+        params = dict()
+        items = []
+        if theme is None:
+            page = self.host + PLATFORM_EXPORT_SV_THEMES
+        else:
+            page = self.host + PLATFORM_EXPORT_SV_SUBTHEMES
+            params['theme'] = theme
         result = self.sess.get(page, params=params)
         if result.status_code == 200:
+            reader = csv.reader(StringIO.StringIO(result.content))
+            items = reader.next()
+        return items
+
+    def get_indicators_info(
+            self, name_filter=None, keywords=None, theme=None, subtheme=None):
+        page = self.host + PLATFORM_EXPORT_SV_NAMES
+        params = dict(name=name_filter,
+                      keywords=keywords,
+                      theme=theme,
+                      subtheme=subtheme)
+        result = self.sess.get(page, params=params)
+        indicators_info = {}
+        if result.status_code == 200:
+            reader = csv.reader(StringIO.StringIO(result.content))
+            header = None
+            for row in reader:
+                if row[0].startswith('#'):
+                    continue
+                if not header:
+                    header = row
+                    continue
+                code = row[0]
+                info = indicators_info[code] = dict()
+                info['name'] = row[1].decode('utf-8')
+                info['theme'] = row[2].decode('utf-8')
+                info['subtheme'] = row[3].decode('utf-8')
+                info['description'] = row[4].decode('utf-8')
+                info['measurement_type'] = \
+                    row[5].decode('utf-8')
+                info['source'] = row[6].decode('utf-8')
+                info['aggregation_method'] = \
+                    row[7].decode('utf-8')
+                info['keywords_str'] = row[8].decode('utf-8')
+        return indicators_info
+
+
+class SvDownloaderWorker(QObject):
+    def __init__(self, sv_downloader, indicators_str, load_geometries):
+        QObject.__init__(self)
+        self.sv_downloader = sv_downloader
+        self.indicators_str = indicators_str
+        self.load_geometries = load_geometries
+        self.processed = 0
+        self.percentage = 0
+        self.is_aborted = False
+        self.downloaded_csv = None
+        self.layer = None
+
+    def abort(self):
+        """
+        Sets a flag to abort the download
+        """
+        self.is_aborted = True
+
+    def check_aborted(self):
+        """
+        checks if the abort flag is set and if yes raises SvDownloadAborted
+        :raises: SvDownloadAborted
+        """
+        if self.is_aborted:
+            raise SvDownloadAborted
+
+    def run(self):
+        """
+        Start the downloader and emits finished(bool) and error(str) if needed
+        """
+        try:
+            # self.fake_run()
+            self.download_data()
+            self.check_aborted()
+            self.make_qgis_layer()
+            self.check_aborted()
+            self.finished.emit(True)
+        except SvDownloadAborted:
+            self.finished.emit(False)
+        except Exception:
+            self.abort()
+            self.error.emit(traceback.format_exc())
+            self.finished.emit(False)
+
+    def download_data(self):
+        """
+        Downloads data from the plattform creating a CSV file
+        in self.downloaded_csv
+
+        :raises SvDownloadError
+        """
+        page = self.sv_downloader.host + PLATFORM_EXPORT_VARIABLES_DATA_BY_IDS
+        params = dict(sv_variables_ids=self.indicators_str,
+                      export_geometries=self.load_geometries)
+        self.progressText.emit('Querying the Socioeconomic Database')
+        result = self.sv_downloader.sess.get(page, params=params, stream=True)
+        self.check_aborted()
+        if result.status_code == 200:
+            content_length = int(result.headers.get('content-length'))
+            # bytes to Mb
+            self.progressTogglePercent.emit(True)
+            self.progressText.emit(
+                'Downloading %sMb' % (content_length/1024/1024))
             # save csv on a temporary file
             fd, fname = tempfile.mkstemp(suffix='.csv')
             os.close(fd)
@@ -78,18 +199,98 @@ class SvDownloader(object):
             # unless a .csvt file with the same name as the .csv file is used
             # to specify the field types.
             # For the type descriptor, use the same name as the csv file
-            fname_types = fname.split('.')[0] + '.csvt'
+            fname_types = fname.split('.')[0] + '.csvt'  # csv types descriptor
             # We expect iso, country_name, v1, v2, ... vn
             # Count variables ids
-            sv_variables_count = len(sv_variables_ids.split(','))
+            sv_variables_count = len(self.indicators_str.split(','))
             # build the string that describes data types for the csv
             types_string = '"String","String"' + ',"Real"' * sv_variables_count
+            partial_data_length = 0
+            if self.load_geometries:
+                types_string += ',"String"'
             with open(fname_types, 'w') as csvt:
                 csvt.write(types_string)
             with open(fname, 'w') as csv:
-                csv.write(result.content)
-                msg = 'Downloaded %d lines into %s' % (
-                    result.content.count('\n'), fname)
-                return fname, msg
+                for partial_data in result.iter_content(chunk_size=512):
+                    self.check_aborted()
+                    partial_data_length += len(partial_data)
+                    csv.write(partial_data)
+                    perc_done = int(100 * partial_data_length / content_length)
+                    self.progress.emit(perc_done)
+            self.downloaded_csv = fname
         else:
             raise SvDownloadError(result.content)
+
+        # All went well
+        if DEBUG:
+            print 'File downloaded at: %s' % self.downloaded_csv
+
+    def make_qgis_layer(self):
+        """
+        Creates QgsVectorLayer from the downloaded CSV storing it in self.layer
+
+        :raises RuntimeError, TypeError
+        """
+        self.progressTogglePercent.emit(False)
+        self.progressText.emit('Creating QGIS layer')
+
+        # count top lines in the csv starting with '#'
+        with open(self.downloaded_csv) as f:
+            lines_to_skip_count = 0
+            for line in f:
+                li = line.strip()
+                if li.startswith('#'):
+                    lines_to_skip_count += 1
+                else:
+                    break
+
+        if DEBUG:
+            print "%s rows will be skipped from the CSV" % lines_to_skip_count
+
+        if self.load_geometries:
+            uri = ('file://%s?delimiter=,&crs=epsg:4326&skipLines=%s'
+                   '&trimFields=yes&wktField=geometry' % (self.downloaded_csv,
+                                                          lines_to_skip_count))
+        else:
+            uri = ('file://%s?delimiter=,&skipLines=%s'
+                   '&trimFields=yes' % (self.downloaded_csv,
+                                        lines_to_skip_count))
+
+        if DEBUG:
+            print 'Reading CSV using %s' % uri
+        # create vector layer from the csv file exported by the
+        # platform (it is still not editable!)
+        vlayer_csv = QgsVectorLayer(uri,
+                                    'socioeconomic_data_export',
+                                    'delimitedtext')
+        self.check_aborted()
+        if self.load_geometries:
+            # obtain a in-memory copy of the layer (editable) and
+            # add it to the registry
+            layer = ProcessLayer(vlayer_csv).duplicate_in_memory(
+                'socioeconomic_zonal_layer')
+        else:
+            if vlayer_csv.isValid():
+                layer = vlayer_csv
+            else:
+                raise RuntimeError('CSV Layer invalid')
+
+        self.layer = layer
+
+    # Define own signals
+    progress = pyqtSignal(int)
+    progressText = pyqtSignal(str)
+    progressTogglePercent = pyqtSignal(bool)
+    status = pyqtSignal(str)
+    error = pyqtSignal(str)
+    killed = pyqtSignal()
+    finished = pyqtSignal(bool)
+
+    # for debugging
+    def fake_run(self):
+        total = 5
+        for i in range(1, total+1):
+            self.check_aborted()
+            sleep(1)
+            progr = i * 100 / total
+            self.progress.emit(progr)

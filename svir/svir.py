@@ -6,7 +6,7 @@
  OpenQuake Social Vulnerability and Integrated Risk
                               -------------------
         begin                : 2013-10-24
-        copyright            : (C) 2013 by GEM Foundation
+        copyright            : (C) 2014 by GEM Foundation
         email                : devops@openquake.org
  ***************************************************************************/
 
@@ -38,7 +38,8 @@ from PyQt4.QtCore import (QSettings,
                           QTranslator,
                           QCoreApplication,
                           qVersion,
-                          QVariant)
+                          QVariant,
+                          QThread)
 
 from PyQt4.QtGui import (QAction,
                          QIcon,
@@ -85,8 +86,7 @@ from select_attrs_for_stats_dialog import SelectAttrsForStatsDialog
 from select_sv_variables_dialog import SelectSvVariablesDialog
 from settings_dialog import SettingsDialog
 from weight_data_dialog import WeightDataDialog
-
-from import_sv_data import SvDownloader, SvDownloadError
+from import_sv_data import SvDownloader, SvDownloaderWorker, SvDownloadError
 
 from utils import (LayerEditingManager,
                    tr,
@@ -94,7 +94,8 @@ from utils import (LayerEditingManager,
                    TraceTimeManager,
                    WaitCursorManager,
                    assign_default_weights,
-                   clear_progress_message_bar, create_progress_message_bar)
+                   clear_progress_message_bar, create_progress_message_bar,
+                   show_message_on_bar, toggle_progress_bar_with_percentage)
 from globals import (INT_FIELD_TYPE_NAME,
                      DOUBLE_FIELD_TYPE_NAME,
                      NUMERIC_FIELD_TYPES,
@@ -232,6 +233,8 @@ class Svir:
                            self.settings,
                            enable=True)
         self.update_actions_status()
+        self.downloader_thread = None
+        self.downloader_worker = None
 
     def layers_added(self):
         self.update_actions_status()
@@ -409,79 +412,107 @@ class Svir:
             self.settings()
             return
 
+        dlg = SelectSvVariablesDialog(sv_downloader)
+        if dlg.exec_():
+            # TODO get this from the dlg
+            # load_geometries = dlg.ui.load_geometries_chk.isChecked()
+            load_geometries = True
+
+            # Retrieve the indices selected by the user
+            indices_list = []
+            project_definition = copy.deepcopy(PROJECT_TEMPLATE)
+            svi_themes = project_definition['children'][1]['children']
+            known_themes = []
+
+            while dlg.ui.list_multiselect.selected_widget.count() > 0:
+                item = dlg.ui.list_multiselect.selected_widget.takeItem(0)
+                ind_code = item.text().split(':')[0]
+                ind_info = dlg.indicators_info_dict[ind_code]
+                sv_theme = ind_info['theme']
+                sv_field = ind_code
+                sv_name = ind_info['name']
+
+                self._add_new_theme(
+                    svi_themes, known_themes, sv_theme, sv_name, sv_field)
+
+                indices_list.append(sv_field)
+            assign_default_weights(svi_themes)
+
+            # create string for DB query
+            indicators_str = ",".join(indices_list)
+
+            # create a separate thread to download data from the platform
+            thread = self.downloader_thread = QThread()
+            thread.setTerminationEnabled(True)
+            worker = self.downloader_worker = SvDownloaderWorker(
+                sv_downloader, indicators_str, load_geometries)
+            worker.moveToThread(thread)
+
+            # Create the QgsMessageBar for downloader
+            message_bar, progress_bar = create_progress_message_bar(
+                self.iface, 'Downloading data', False, self.download_abort)
+            self.download_message_bar = message_bar
+            self.download_progress_bar = progress_bar
+            thread.started.connect(worker.run)
+            worker.progress.connect(progress_bar.setValue)
+            worker.progressTogglePercent.connect(
+                lambda with_percentage:
+                toggle_progress_bar_with_percentage(
+                    progress_bar, with_percentage=with_percentage))
+            worker.progressText.connect(message_bar.setText)
+            worker.status.connect(self.show_message)
+            worker.error.connect(self.download_error)
+            worker.finished.connect(
+                lambda success:
+                self.download_finished(success, project_definition))
+            thread.start()
+
+    def download_abort(self):
+        show_message_on_bar(self.iface, 'download aborted', duration=5)
+        self.downloader_worker.progress.disconnect()
+        self.downloader_worker.progressText.disconnect()
+        self.downloader_worker.progressTogglePercent.disconnect()
+        self.downloader_worker.abort()
+        clear_progress_message_bar(self.iface, self.download_message_bar)
+
+    def download_finished(self, success, project_definition):
+        self.downloader_worker.deleteLater()
+        self.downloader_thread.quit()
+        self.downloader_thread.wait()
+        self.downloader_thread.deleteLater()
+        clear_progress_message_bar(self.iface, self.download_message_bar)
+
+        if success:
+            self.add_downloaded_layer(project_definition)
+        # Update plugin toolbar buttons
+        self.update_actions_status()
+
+    def download_error(self, error):
+        self.show_message(title='Download error',
+                          message=error,
+                          level=QgsMessageBar.CRITICAL)
+        QgsMessageLog.logMessage(error, 'SVIR')
+        # Update plugin toolbar buttons
+        self.update_actions_status()
+
+    def add_downloaded_layer(self, project_definition):
+        layer = self.downloader_worker.layer
+        QgsMapLayerRegistry.instance().addMapLayer(layer)
+        self.iface.setActiveLayer(layer)
+        self.iface.mapCanvas().setExtent(layer.extent())
+        self.project_definitions[layer.id()] = project_definition
+        display_msg = tr(
+            'Socioeconomic data loaded in layer %s' % layer.name())
         try:
-            dlg = SelectSvVariablesDialog(sv_downloader)
-            if dlg.exec_():
-                msg = ("Loading socioeconomic data from the OpenQuake "
-                       "Platform...")
-                # Retrieve the indices selected by the user
-                indices_list = []
-                project_definition = copy.deepcopy(PROJECT_TEMPLATE)
-                svi_themes = project_definition[
-                    'children'][1]['children']
-                known_themes = []
-                with WaitCursorManager(msg, self.iface):
-                    while dlg.ui.selected_names_lst.count() > 0:
-                        item = dlg.ui.selected_names_lst.takeItem(0)
-                        item_text = item.text().replace('"', '')
+            # use QgsMessageBar.POSITIVE if exists
+            level = QgsMessageBar.POSITIVE
+        except AttributeError:
+            level = QgsMessageBar.INFO
+        self.show_message(display_msg, level=level, duration=0)
 
-                        sv = item_text.split(',', 2)
-                        sv_theme = sv[0]
-                        sv_field = sv[1]
-                        sv_name = sv[2]
-                        self._add_new_theme(svi_themes,
-                                            known_themes,
-                                            sv_theme,
-                                            sv_name,
-                                            sv_field)
-
-                        indices_list.append(sv_field)
-
-                    # create string for DB query
-                    indices_string = ", ".join(indices_list)
-
-                    assign_default_weights(svi_themes)
-
-                    try:
-                        fname, msg = sv_downloader.get_data_by_variables_ids(
-                            indices_string)
-                    except SvDownloadError as e:
-                        self.iface.messageBar().pushMessage(
-                            tr("Download Error"),
-                            tr(str(e)),
-                            level=QgsMessageBar.CRITICAL)
-                        return
-
-                display_msg = tr(
-                    "Socioeconomic data loaded in a new layer")
-                self.iface.messageBar().pushMessage(tr("Info"),
-                                                    tr(display_msg),
-                                                    level=QgsMessageBar.INFO,
-                                                    duration=8)
-                QgsMessageLog.logMessage(
-                    msg, 'GEM Social Vulnerability Downloader')
-                # don't remove the file, otherwise there will be concurrency
-                # problems
-                uri = ('file://%s?delimiter=,&crs=epsg:4326&'
-                       'skipLines=25&trimFields=yes&wktField=geometry' % fname)
-                # create vector layer from the csv file exported by the
-                # platform (it is still not editable!)
-                vlayer_csv = QgsVectorLayer(uri,
-                                            'socioeconomic_data_export',
-                                            'delimitedtext')
-                # obtain a in-memory copy of the layer (editable) and add it to
-                # the registry
-                layer = ProcessLayer(vlayer_csv).duplicate_in_memory(
-                    'socioeconomic_zonal_layer',
-                    add_to_registry=True)
-                self.iface.setActiveLayer(layer)
-                self.project_definitions[layer.id()] = project_definition
-                self.update_actions_status()
-
-        except SvDownloadError as e:
-            self.iface.messageBar().pushMessage(tr("Download Error"),
-                                                tr(str(e)),
-                                                level=QgsMessageBar.CRITICAL)
+    def show_message(
+            self, message, title='Info', level=QgsMessageBar.INFO, duration=5):
+        show_message_on_bar(self.iface, message, title, level, duration)
 
     @staticmethod
     def _add_new_theme(svi_themes,

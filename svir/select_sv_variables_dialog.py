@@ -25,7 +25,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake.  If not, see <http://www.gnu.org/licenses/>.
 """
-from PyQt4.QtCore import pyqtSlot, Qt
+from PyQt4.QtCore import pyqtSlot
 from PyQt4.QtGui import (QDialog,
                          QDialogButtonBox)
 
@@ -48,8 +48,21 @@ class SelectSvVariablesDialog(QDialog):
         self.set_ok_button()
         # login to platform, to be able to retrieve sv indices
         self.sv_downloader = downloader
+        self.indicators_info_dict = {}
         with WaitCursorManager():
             self.fill_themes()
+        self.ui.list_multiselect.unselected_widget.itemClicked.connect(
+            self.update_indicator_info)
+        self.ui.list_multiselect.selected_widget.itemClicked.connect(
+            self.update_indicator_info)
+        self.ui.list_multiselect.select_all_btn.clicked.connect(
+            self.set_ok_button)
+        self.ui.list_multiselect.deselect_all_btn.clicked.connect(
+            self.set_ok_button)
+        self.ui.list_multiselect.select_btn.clicked.connect(
+            self.set_ok_button)
+        self.ui.list_multiselect.deselect_btn.clicked.connect(
+            self.set_ok_button)
 
     @pyqtSlot(str)
     def on_theme_cbx_currentIndexChanged(self):
@@ -57,51 +70,21 @@ class SelectSvVariablesDialog(QDialog):
         with WaitCursorManager():
             self.fill_subthemes(theme)
 
-    @pyqtSlot(str)
-    def on_subtheme_cbx_currentIndexChanged(self):
-        theme = self.ui.theme_cbx.currentText()
-        subtheme = self.ui.subtheme_cbx.currentText()
+    @pyqtSlot()
+    def on_filter_btn_clicked(self):
         with WaitCursorManager():
-            self.fill_tags(theme, subtheme)
-
-    @pyqtSlot(str)
-    def on_tag_cbx_currentIndexChanged(self):
-        theme = self.ui.theme_cbx.currentText()
-        subtheme = self.ui.subtheme_cbx.currentText()
-        tag = self.ui.tag_cbx.currentText()
-        with WaitCursorManager():
-            self.fill_names(theme, subtheme, tag)
-
-    @pyqtSlot()
-    def on_add_name_btn_clicked(self):
-        theme = self.ui.theme_cbx.currentText()
-        name = self.ui.name_cbx.currentText()
-        name = '%s,%s' % (theme, name)
-        if not self.ui.selected_names_lst.findItems(
-                name, Qt.MatchFixedString):
-                self.ui.selected_names_lst.addItem(name)
-                self.set_ok_button()
-
-    @pyqtSlot()
-    def on_remove_name_btn_clicked(self):
-        row = self.ui.selected_names_lst.currentRow()
-        if row is not None:
-            self.ui.selected_names_lst.takeItem(row)
-            self.set_ok_button()
-
-    @pyqtSlot()
-    def on_clear_btn_clicked(self):
-        self.ui.selected_names_lst.clear()
-        self.set_ok_button()
+            self.fill_names()
 
     def set_ok_button(self):
-        self.ok_button.setEnabled(self.ui.selected_names_lst.count() > 0)
+        self.ok_button.setEnabled(
+            self.ui.list_multiselect.selected_widget.count() > 0)
 
     def fill_themes(self):
         self.ui.theme_cbx.clear()
         # load list of themes from the platform
+        self.ui.theme_cbx.addItems([None])
         try:
-            themes = self.sv_downloader.get_category_names()
+            themes = self.sv_downloader.get_themes()
             self.ui.theme_cbx.addItems(themes)
         except SvDownloadError as e:
             raise SvDownloadError(
@@ -114,37 +97,40 @@ class SelectSvVariablesDialog(QDialog):
     def fill_subthemes(self, theme):
         self.ui.subtheme_cbx.clear()
         # load list of subthemes from the platform
+        self.ui.subtheme_cbx.addItems([None])
         try:
-            subthemes = self.sv_downloader.get_category_names(theme)
+            subthemes = self.sv_downloader.get_subthemes_by_theme(theme)
             self.ui.subtheme_cbx.addItems(subthemes)
         except SvDownloadError as e:
             raise SvDownloadError(
                 "Unable to download social vulnerability subthemes: %s" % e)
-        # populate the subsequent combo boxes accordingly with the currently
-        # selected item
-        current_subtheme = self.ui.subtheme_cbx.currentText()
-        self.fill_tags(theme, current_subtheme)
 
-    def fill_tags(self, theme, subtheme):
-        self.ui.tag_cbx.clear()
-        # load list of tags from the platform
-        try:
-            tags = self.sv_downloader.get_category_names(theme, subtheme)
-            self.ui.tag_cbx.addItems(tags)
-        except SvDownloadError as e:
-            raise SvDownloadError(
-                "Unable to download social vulnerability tags: %s" % e)
-        # populate the subsequent combo boxes accordingly with the currently
-        # selected item
-        current_tag = self.ui.tag_cbx.currentText()
-        self.fill_names(theme, subtheme, current_tag)
-
-    def fill_names(self, theme, subtheme, tag):
-        self.ui.name_cbx.clear()
+    def fill_names(self):
+        self.ui.list_multiselect.set_unselected_items([])
         # load list of social vulnerability variable names from the platform
+        name_filter = self.ui.name_filter_le.text()
+        keywords = self.ui.keywords_le.text()
+        theme = self.ui.theme_cbx.currentText()
+        subtheme = self.ui.subtheme_cbx.currentText()
         try:
-            names = self.sv_downloader.get_category_names(theme, subtheme, tag)
-            self.ui.name_cbx.addItems(names)
+            filter_result_dict = self.sv_downloader.get_indicators_info(
+                name_filter, keywords, theme, subtheme)
+            self.indicators_info_dict.update(filter_result_dict)
+            names = sorted(
+                [code + ': ' + filter_result_dict[code]['name']
+                    for code in filter_result_dict])
+            self.ui.list_multiselect.add_unselected_items(names)
         except SvDownloadError as e:
             raise SvDownloadError(
                 "Unable to download social vulnerability names: %s" % e)
+
+    def update_indicator_info(self, item):
+        hint_text = item.text()
+        indicator_code = item.text().split(':')[0]
+        indicator_info_dict = self.indicators_info_dict[indicator_code]
+        hint_text += '\n\n' + 'Description:\n' + indicator_info_dict[
+            'description']
+        hint_text += '\n\n' + 'Source:\n' + indicator_info_dict['source']
+        hint_text += '\n\n' + 'Aggregation method:\n' + indicator_info_dict[
+            'aggregation_method']
+        self.ui.indicator_details.setText(hint_text)
