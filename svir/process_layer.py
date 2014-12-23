@@ -223,6 +223,12 @@ class ProcessLayer():
                 type_str = "multilinestring"
             elif v_type == QGis.WKBMultiPolygon:
                 type_str = "multipolygon"
+            # TODO: We need to implement the layer duplication for layers
+            # containing no geometries. Currently it doesn't work, but it would
+            # be useful to be able to import from the platform only
+            # socioeconomic data, without the geometries.
+            # elif v_type == QGis.WKBNoGeometry:
+            #     type_str = ""
             else:
                 raise TypeError('Layer type %s can not be accepted' % v_type)
         else:
